@@ -1,0 +1,19 @@
+# Binary
+azboard
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Go
+vendor/
+
+# Config (contains PAT)
+config.env
