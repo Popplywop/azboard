@@ -2,17 +2,18 @@ package prs
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/popplywop/azboard/internal/api"
 	"github.com/popplywop/azboard/internal/ui/theme"
 
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/spinner"
-	"github.com/charmbracelet/bubbles/table"
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/spinner"
+	"charm.land/bubbles/v2/table"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 // Messages
@@ -28,6 +29,20 @@ type SelectPRMsg struct {
 	PR api.PullRequest
 }
 
+type prScope struct {
+	Label     string
+	APIStatus string
+	DraftOnly bool
+}
+
+var listScopes = []prScope{
+	{Label: "Active", APIStatus: "active"},
+	{Label: "Draft", APIStatus: "active", DraftOnly: true},
+	{Label: "Completed", APIStatus: "completed"},
+	{Label: "Abandoned", APIStatus: "abandoned"},
+	{Label: "All", APIStatus: "all"},
+}
+
 // ListModel is the PR list view.
 type ListModel struct {
 	client      *api.Client
@@ -41,6 +56,7 @@ type ListModel struct {
 	err         error
 	width       int
 	height      int
+	scopeIndex  int
 }
 
 func NewListModel(client *api.Client) ListModel {
@@ -78,18 +94,22 @@ func NewListModel(client *api.Client) ListModel {
 
 	fi := textinput.New()
 	fi.Prompt = "/ "
-	fi.PromptStyle = theme.FilterPrompt
-	fi.TextStyle = theme.FilterText
-	fi.Cursor.Style = theme.FilterCursor
+	fiStyles := fi.Styles()
+	fiStyles.Focused.Prompt = theme.FilterPrompt
+	fiStyles.Blurred.Prompt = theme.FilterPrompt
+	fiStyles.Focused.Text = theme.FilterText
+	fiStyles.Blurred.Text = theme.FilterText
+	fi.SetStyles(fiStyles)
 	fi.Placeholder = "type to filter by title, repo, author, status..."
 	fi.CharLimit = 100
 
 	return ListModel{
-		client:  client,
-		table:   t,
-		spinner: s,
-		filter:  fi,
-		loading: true,
+		client:     client,
+		table:      t,
+		spinner:    s,
+		filter:     fi,
+		loading:    true,
+		scopeIndex: 0,
 	}
 }
 
@@ -103,8 +123,35 @@ func (m ListModel) IsFiltering() bool {
 }
 
 func (m ListModel) fetchPRs() tea.Cmd {
+	scope := m.currentScope()
 	return func() tea.Msg {
-		prs, err := m.client.ListPullRequests("active")
+		if scope.APIStatus == "all" {
+			statuses := []string{"active", "completed", "abandoned"}
+			combined := make([]api.PullRequest, 0)
+			seen := make(map[int]struct{})
+
+			for _, status := range statuses {
+				prs, err := m.client.ListPullRequests(status)
+				if err != nil {
+					return PRsErrorMsg{Err: err}
+				}
+				for _, pr := range prs {
+					if _, ok := seen[pr.PullRequestID]; ok {
+						continue
+					}
+					seen[pr.PullRequestID] = struct{}{}
+					combined = append(combined, pr)
+				}
+			}
+
+			sort.Slice(combined, func(i, j int) bool {
+				return combined[i].PullRequestID > combined[j].PullRequestID
+			})
+
+			return PRsLoadedMsg{PRs: combined}
+		}
+
+		prs, err := m.client.ListPullRequests(scope.APIStatus)
 		if err != nil {
 			return PRsErrorMsg{Err: err}
 		}
@@ -124,7 +171,7 @@ func (m ListModel) Update(msg tea.Msg) (ListModel, tea.Cmd) {
 		if m.filtering || m.filter.Value() != "" {
 			filterHeight = 2
 		}
-		m.table.SetHeight(m.height - 6 - filterHeight)
+		m.table.SetHeight(m.height - 8 - filterHeight - 2) // -2 for rounded border
 
 	case PRsLoadedMsg:
 		m.loading = false
@@ -142,7 +189,7 @@ func (m ListModel) Update(msg tea.Msg) (ListModel, tea.Cmd) {
 			cmds = append(cmds, cmd)
 		}
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		// When filter input is focused, handle its keys first
 		if m.filtering {
 			switch msg.String() {
@@ -181,10 +228,10 @@ func (m ListModel) Update(msg tea.Msg) (ListModel, tea.Cmd) {
 		switch {
 		case key.Matches(msg, key.NewBinding(key.WithKeys("/"))):
 			m.filtering = true
-			m.filter.Focus()
+			cmd := m.filter.Focus()
 			m.table.Blur()
 			m.recalcTableHeight()
-			return m, m.filter.Cursor.BlinkCmd()
+			return m, cmd
 		case key.Matches(msg, key.NewBinding(key.WithKeys("enter"))):
 			if !m.loading && len(m.filteredPRs) > 0 {
 				idx := m.table.Cursor()
@@ -194,6 +241,16 @@ func (m ListModel) Update(msg tea.Msg) (ListModel, tea.Cmd) {
 					}
 				}
 			}
+		case key.Matches(msg, key.NewBinding(key.WithKeys("["))):
+			m.cycleScope(-1)
+			m.loading = true
+			m.err = nil
+			return m, tea.Batch(m.spinner.Tick, m.fetchPRs())
+		case key.Matches(msg, key.NewBinding(key.WithKeys("]"))):
+			m.cycleScope(1)
+			m.loading = true
+			m.err = nil
+			return m, tea.Batch(m.spinner.Tick, m.fetchPRs())
 		case key.Matches(msg, key.NewBinding(key.WithKeys("r"))):
 			m.loading = true
 			m.err = nil
@@ -223,18 +280,27 @@ func (m *ListModel) recalcTableHeight() {
 	if m.filtering || m.filter.Value() != "" {
 		filterHeight = 2
 	}
-	m.table.SetHeight(m.height - 6 - filterHeight)
+	h := m.height - 8 - filterHeight - 2 // -2 for rounded border
+	if h < 5 {
+		h = 5
+	}
+	m.table.SetHeight(h)
 }
 
 func (m *ListModel) applyFilter() {
 	query := strings.ToLower(strings.TrimSpace(m.filter.Value()))
 
 	if query == "" {
-		m.filteredPRs = m.prs
+		m.filteredPRs = nil
+		for _, pr := range m.prs {
+			if m.matchesScope(pr) {
+				m.filteredPRs = append(m.filteredPRs, pr)
+			}
+		}
 	} else {
 		m.filteredPRs = nil
 		for _, pr := range m.prs {
-			if m.matchesPR(pr, query) {
+			if m.matchesScope(pr) && m.matchesPR(pr, query) {
 				m.filteredPRs = append(m.filteredPRs, pr)
 			}
 		}
@@ -308,6 +374,12 @@ func (m *ListModel) recalcColumns() {
 		{Title: "Status", Width: statusW},
 		{Title: "Reviewers", Width: reviewW},
 	})
+
+	// v2: must explicitly set viewport width or table renders empty.
+	// Subtract 2 to account for the rounded border added in View().
+	if m.width > 2 {
+		m.table.SetWidth(m.width - 2)
+	}
 }
 
 func (m ListModel) buildRows(prs []api.PullRequest) []table.Row {
@@ -356,10 +428,13 @@ func (m ListModel) View() string {
 	}
 
 	if len(m.prs) == 0 {
-		return "\n  No active pull requests found.\n\n  Press 'r' to refresh"
+		return fmt.Sprintf("\n  No %s pull requests found.\n\n  Press 'r' to refresh", strings.ToLower(m.currentScope().Label))
 	}
 
 	var sections []string
+
+	// Scope bar
+	sections = append(sections, m.renderScopeBar())
 
 	// Filter bar (shown when filtering or when there's an active filter)
 	if m.filtering || m.filter.Value() != "" {
@@ -372,7 +447,7 @@ func (m ListModel) View() string {
 	}
 
 	// Table
-	sections = append(sections, m.table.View())
+	sections = append(sections, theme.TableBorder.Render(m.table.View()))
 
 	// Hint when no results match
 	if len(m.filteredPRs) == 0 && m.filter.Value() != "" {
@@ -382,6 +457,43 @@ func (m ListModel) View() string {
 	}
 
 	return strings.Join(sections, "\n")
+}
+
+func (m ListModel) renderScopeBar() string {
+	parts := make([]string, 0, len(listScopes)+1)
+	parts = append(parts, theme.HelpDesc.Render("  Scope:"))
+
+	for i, s := range listScopes {
+		label := " " + s.Label + " "
+		if i == m.scopeIndex {
+			parts = append(parts, theme.ActiveTab.Render(label))
+		} else {
+			parts = append(parts, theme.InactiveTab.Render(label))
+		}
+	}
+
+	bar := lipgloss.JoinHorizontal(lipgloss.Top, parts...)
+	return theme.FilterBar.Render(bar + theme.HelpDesc.Render("   [ / ] cycle"))
+}
+
+func (m ListModel) currentScope() prScope {
+	if m.scopeIndex < 0 || m.scopeIndex >= len(listScopes) {
+		return listScopes[0]
+	}
+	return listScopes[m.scopeIndex]
+}
+
+func (m *ListModel) cycleScope(delta int) {
+	n := len(listScopes)
+	m.scopeIndex = (m.scopeIndex + delta + n) % n
+}
+
+func (m ListModel) matchesScope(pr api.PullRequest) bool {
+	scope := m.currentScope()
+	if scope.DraftOnly {
+		return pr.IsDraft
+	}
+	return true
 }
 
 func truncate(s string, maxLen int) string {

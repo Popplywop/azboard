@@ -1,6 +1,6 @@
 package theme
 
-import "github.com/charmbracelet/lipgloss"
+import "charm.land/lipgloss/v2"
 
 var (
 	// Colors
@@ -120,6 +120,11 @@ var (
 			Foreground(Danger).
 			Bold(true)
 
+	// Table border
+	TableBorder = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(Border)
+
 	// Filter bar
 	FilterPrompt = lipgloss.NewStyle().
 			Foreground(Primary).
@@ -178,6 +183,21 @@ var (
 	// Success flash message
 	SuccessText = lipgloss.NewStyle().
 			Foreground(Success).
+			Bold(true)
+
+	// Diff view
+	DiffAdd = lipgloss.NewStyle().
+		Foreground(Success)
+
+	DiffDelete = lipgloss.NewStyle().
+			Foreground(Danger)
+
+	DiffHunk = lipgloss.NewStyle().
+			Foreground(Info).
+			Bold(true)
+
+	DiffMeta = lipgloss.NewStyle().
+			Foreground(Muted).
 			Bold(true)
 )
 

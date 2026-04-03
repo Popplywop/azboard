@@ -10,19 +10,19 @@ type ListResponse[T any] struct {
 
 // PullRequest represents an Azure DevOps pull request.
 type PullRequest struct {
-	PullRequestID int        `json:"pullRequestId"`
-	Title         string     `json:"title"`
-	Description   string     `json:"description"`
-	Status        string     `json:"status"`
-	CreationDate  time.Time  `json:"creationDate"`
-	ClosedDate    *time.Time `json:"closedDate,omitempty"`
-	SourceRefName string     `json:"sourceRefName"`
-	TargetRefName string     `json:"targetRefName"`
-	MergeStatus   string     `json:"mergeStatus"`
-	IsDraft       bool       `json:"isDraft"`
-	CreatedBy     IdentityRef `json:"createdBy"`
+	PullRequestID int           `json:"pullRequestId"`
+	Title         string        `json:"title"`
+	Description   string        `json:"description"`
+	Status        string        `json:"status"`
+	CreationDate  time.Time     `json:"creationDate"`
+	ClosedDate    *time.Time    `json:"closedDate,omitempty"`
+	SourceRefName string        `json:"sourceRefName"`
+	TargetRefName string        `json:"targetRefName"`
+	MergeStatus   string        `json:"mergeStatus"`
+	IsDraft       bool          `json:"isDraft"`
+	CreatedBy     IdentityRef   `json:"createdBy"`
 	Repository    GitRepository `json:"repository"`
-	Reviewers     []Reviewer  `json:"reviewers"`
+	Reviewers     []Reviewer    `json:"reviewers"`
 }
 
 // SourceBranch returns the short branch name (strips refs/heads/).
@@ -103,13 +103,13 @@ func (r *Reviewer) VoteIcon() string {
 
 // Thread represents a pull request comment thread.
 type Thread struct {
-	ID            int       `json:"id"`
-	Status        string    `json:"status"`
-	Comments      []Comment `json:"comments"`
-	IsDeleted     bool      `json:"isDeleted"`
-	ThreadContext *ThreadContext `json:"threadContext,omitempty"`
-	PublishedDate time.Time `json:"publishedDate"`
-	LastUpdatedDate time.Time `json:"lastUpdatedDate"`
+	ID              int            `json:"id"`
+	Status          string         `json:"status"`
+	Comments        []Comment      `json:"comments"`
+	IsDeleted       bool           `json:"isDeleted"`
+	ThreadContext   *ThreadContext `json:"threadContext,omitempty"`
+	PublishedDate   time.Time      `json:"publishedDate"`
+	LastUpdatedDate time.Time      `json:"lastUpdatedDate"`
 }
 
 // ThreadContext contains file path info for inline comments.
@@ -157,4 +157,31 @@ type ConnectionData struct {
 		ID          string `json:"id"`
 		DisplayName string `json:"providerDisplayName"`
 	} `json:"authenticatedUser"`
+}
+
+// CommitRef identifies a git commit in Azure DevOps.
+type CommitRef struct {
+	CommitID string `json:"commitId"`
+}
+
+// Iteration represents a PR iteration.
+type Iteration struct {
+	ID              int       `json:"id"`
+	Description     string    `json:"description"`
+	CreatedDate     time.Time `json:"createdDate"`
+	SourceRefCommit CommitRef `json:"sourceRefCommit"`
+	TargetRefCommit CommitRef `json:"targetRefCommit"`
+}
+
+// ChangeItem identifies a changed path.
+type ChangeItem struct {
+	Path string `json:"path"`
+}
+
+// IterationChange represents a changed file in an iteration.
+type IterationChange struct {
+	ChangeID     int        `json:"changeId"`
+	ChangeType   string     `json:"changeType"`
+	Item         ChangeItem `json:"item"`
+	OriginalPath string     `json:"originalPath,omitempty"`
 }

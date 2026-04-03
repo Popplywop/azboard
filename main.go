@@ -8,7 +8,7 @@ import (
 	"github.com/popplywop/azboard/internal/config"
 	"github.com/popplywop/azboard/internal/ui"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 func main() {
@@ -40,7 +40,7 @@ func main() {
 
 	model := ui.NewAppModel(client, cfg.Org, cfg.Project)
 
-	p := tea.NewProgram(model, tea.WithAltScreen())
+	p := tea.NewProgram(model)
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error running TUI: %s\n", err)
 		os.Exit(1)

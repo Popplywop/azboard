@@ -7,9 +7,9 @@ import (
 	"github.com/popplywop/azboard/internal/ui/prs"
 	"github.com/popplywop/azboard/internal/ui/theme"
 
-	"github.com/charmbracelet/bubbles/key"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/key"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 type view int
@@ -53,7 +53,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		// Don't intercept keys when the filter input or compose/confirm is focused
 		if m.activeView == viewList && m.list.IsFiltering() {
 			break
@@ -108,7 +108,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
-func (m AppModel) View() string {
+func (m AppModel) View() tea.View {
 	// Tab bar
 	tabs := m.renderTabBar()
 
@@ -129,7 +129,9 @@ func (m AppModel) View() string {
 		content = m.renderHelp()
 	}
 
-	return lipgloss.JoinVertical(lipgloss.Left, tabs, content, statusBar)
+	v := tea.NewView(lipgloss.JoinVertical(lipgloss.Left, tabs, content, statusBar))
+	v.AltScreen = true
+	return v
 }
 
 func (m AppModel) renderTabBar() string {
@@ -173,6 +175,7 @@ func (m AppModel) renderHelp() string {
 		{"↑/k", "Move up"},
 		{"↓/j", "Move down"},
 		{"enter", "View PR details"},
+		{"[ / ]", "Cycle scope"},
 		{"/", "Filter PRs"},
 		{"esc", "Clear filter / back"},
 		{"r", "Refresh"},
@@ -184,6 +187,7 @@ func (m AppModel) renderHelp() string {
 		key  string
 		desc string
 	}{
+		{"f", "Open files view"},
 		{"n/N", "Next / prev thread"},
 		{"c", "Reply to focused thread"},
 		{"C", "New comment thread"},

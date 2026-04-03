@@ -8,12 +8,12 @@ import (
 	"github.com/popplywop/azboard/internal/api"
 	"github.com/popplywop/azboard/internal/ui/theme"
 
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/spinner"
-	"github.com/charmbracelet/bubbles/textarea"
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/spinner"
+	"charm.land/bubbles/v2/textarea"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 // --- Detail mode state machine ---
@@ -24,6 +24,14 @@ const (
 	modeNormal  detailMode = iota
 	modeCompose            // textarea focused for writing a comment
 	modeConfirm            // vote confirmation prompt
+)
+
+type detailPane int
+
+const (
+	paneOverview detailPane = iota
+	paneFiles
+	paneDiff
 )
 
 // --- Messages ---
@@ -74,6 +82,25 @@ type PRRefreshErrorMsg struct {
 	Err error
 }
 
+type FilesLoadedMsg struct {
+	BaseCommit string
+	HeadCommit string
+	Changes    []api.IterationChange
+}
+
+type FilesErrorMsg struct {
+	Err error
+}
+
+type DiffLoadedMsg struct {
+	Path string
+	Diff string
+}
+
+type DiffErrorMsg struct {
+	Err error
+}
+
 // --- DetailModel ---
 
 type DetailModel struct {
@@ -85,6 +112,8 @@ type DetailModel struct {
 	viewport viewport.Model
 	spinner  spinner.Model
 	textarea textarea.Model
+	files    FilesModel
+	diff     DiffModel
 
 	// State
 	mode          detailMode
@@ -100,6 +129,14 @@ type DetailModel struct {
 	userID        string // current user's ID
 	flashMsg      string // temporary success/error message
 	flashStyle    lipgloss.Style
+	pane          detailPane
+	filesLoading  bool
+	filesLoaded   bool
+	diffLoading   bool
+	filesErr      error
+	diffErr       error
+	baseCommitID  string
+	headCommitID  string
 
 	// Thread positions for scrolling (line number where each thread starts)
 	threadPositions []int
@@ -114,7 +151,9 @@ func NewDetailModel(client *api.Client, pr api.PullRequest) DetailModel {
 	ta.Placeholder = "Write your comment..."
 	ta.ShowLineNumbers = false
 	ta.SetHeight(5)
-	ta.FocusedStyle.CursorLine = lipgloss.NewStyle()
+	styles := ta.Styles()
+	styles.Focused.CursorLine = lipgloss.NewStyle()
+	ta.SetStyles(styles)
 	ta.CharLimit = 4000
 
 	return DetailModel{
@@ -125,6 +164,9 @@ func NewDetailModel(client *api.Client, pr api.PullRequest) DetailModel {
 		loading:       true,
 		focusedThread: -1,
 		replyThreadID: -1,
+		pane:          paneOverview,
+		files:         NewFilesModel(),
+		diff:          NewDiffModel(),
 	}
 }
 
@@ -166,6 +208,44 @@ func (m DetailModel) fetchPR() tea.Cmd {
 			return PRRefreshErrorMsg{Err: err}
 		}
 		return PRRefreshedMsg{PR: *updated}
+	}
+}
+
+func (m DetailModel) fetchFiles() tea.Cmd {
+	pr := m.pr
+	return func() tea.Msg {
+		iterations, err := m.client.GetPullRequestIterations(pr.Repository.ID, pr.PullRequestID)
+		if err != nil {
+			return FilesErrorMsg{Err: err}
+		}
+		if len(iterations) == 0 {
+			return FilesLoadedMsg{}
+		}
+
+		latest := iterations[len(iterations)-1]
+		changes, err := m.client.GetPullRequestIterationChanges(pr.Repository.ID, pr.PullRequestID, latest.ID)
+		if err != nil {
+			return FilesErrorMsg{Err: err}
+		}
+
+		return FilesLoadedMsg{
+			BaseCommit: latest.TargetRefCommit.CommitID,
+			HeadCommit: latest.SourceRefCommit.CommitID,
+			Changes:    changes,
+		}
+	}
+}
+
+func (m DetailModel) fetchDiff(ch api.IterationChange) tea.Cmd {
+	pr := m.pr
+	base := m.baseCommitID
+	head := m.headCommitID
+	return func() tea.Msg {
+		d, err := m.client.BuildUnifiedDiff(pr.Repository.ID, ch, base, head)
+		if err != nil {
+			return DiffErrorMsg{Err: err}
+		}
+		return DiffLoadedMsg{Path: ch.Item.Path, Diff: d}
 	}
 }
 
@@ -231,6 +311,8 @@ func (m DetailModel) Update(msg tea.Msg) (DetailModel, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.resizeViewport()
+		m.files.SetSize(m.width, m.height-4)
+		m.diff.SetSize(m.width, m.height-4)
 		if !m.loading && m.ready {
 			m.viewport.SetContent(m.renderContent())
 		}
@@ -267,6 +349,29 @@ func (m DetailModel) Update(msg tea.Msg) (DetailModel, tea.Cmd) {
 
 	case PRRefreshErrorMsg:
 		// Non-fatal, the stale data is still shown
+
+	case FilesLoadedMsg:
+		m.filesLoading = false
+		m.filesLoaded = true
+		m.filesErr = nil
+		m.baseCommitID = msg.BaseCommit
+		m.headCommitID = msg.HeadCommit
+		m.files.SetChanges(msg.Changes)
+
+	case FilesErrorMsg:
+		m.filesLoading = false
+		m.filesLoaded = true
+		m.filesErr = msg.Err
+
+	case DiffLoadedMsg:
+		m.diffLoading = false
+		m.diffErr = nil
+		m.diff.SetDiff(msg.Path, msg.Diff)
+		m.pane = paneDiff
+
+	case DiffErrorMsg:
+		m.diffLoading = false
+		m.diffErr = msg.Err
 
 	case VoteSubmittedMsg:
 		m.mode = modeNormal
@@ -316,7 +421,7 @@ func (m DetailModel) Update(msg tea.Msg) (DetailModel, tea.Cmd) {
 			cmds = append(cmds, cmd)
 		}
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch m.mode {
 		case modeNormal:
 			cmd := m.handleNormalKeys(msg)
@@ -341,6 +446,14 @@ func (m DetailModel) Update(msg tea.Msg) (DetailModel, tea.Cmd) {
 		var cmd tea.Cmd
 		m.textarea, cmd = m.textarea.Update(msg)
 		cmds = append(cmds, cmd)
+	} else if m.pane == paneFiles {
+		var cmd tea.Cmd
+		m.files, cmd = m.files.Update(msg)
+		cmds = append(cmds, cmd)
+	} else if m.pane == paneDiff {
+		var cmd tea.Cmd
+		m.diff, cmd = m.diff.Update(msg)
+		cmds = append(cmds, cmd)
 	} else if m.ready && !m.loading {
 		var cmd tea.Cmd
 		m.viewport, cmd = m.viewport.Update(msg)
@@ -350,7 +463,44 @@ func (m DetailModel) Update(msg tea.Msg) (DetailModel, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
-func (m *DetailModel) handleNormalKeys(msg tea.KeyMsg) tea.Cmd {
+func (m *DetailModel) handleNormalKeys(msg tea.KeyPressMsg) tea.Cmd {
+	if m.pane == paneFiles {
+		switch msg.String() {
+		case "esc":
+			m.pane = paneOverview
+			return nil
+		case "r":
+			m.filesLoading = true
+			m.filesErr = nil
+			m.filesLoaded = false
+			return m.fetchFiles()
+		case "enter":
+			if m.files.IsOnDir() {
+				m.files.toggleCollapse()
+				return nil
+			}
+			ch, ok := m.files.SelectedChange()
+			if !ok {
+				return nil
+			}
+			m.diffLoading = true
+			m.diffErr = nil
+			return m.fetchDiff(ch)
+		default:
+			return nil
+		}
+	}
+
+	if m.pane == paneDiff {
+		switch msg.String() {
+		case "esc":
+			m.pane = paneFiles
+			return nil
+		default:
+			return nil
+		}
+	}
+
 	switch {
 	case key.Matches(msg, key.NewBinding(key.WithKeys("esc"))):
 		if m.focusedThread >= 0 {
@@ -364,6 +514,7 @@ func (m *DetailModel) handleNormalKeys(msg tea.KeyMsg) tea.Cmd {
 	case key.Matches(msg, key.NewBinding(key.WithKeys("r"))):
 		m.loading = true
 		m.err = nil
+		m.filesLoaded = false
 		return tea.Batch(m.spinner.Tick, m.fetchPR(), m.fetchThreads())
 
 	case key.Matches(msg, key.NewBinding(key.WithKeys("n"))):
@@ -380,9 +531,9 @@ func (m *DetailModel) handleNormalKeys(msg tea.KeyMsg) tea.Cmd {
 			m.replyThreadID = filtered[m.focusedThread].ID
 			m.mode = modeCompose
 			m.textarea.Reset()
-			m.textarea.Focus()
+			cmd := m.textarea.Focus()
 			m.resizeViewport()
-			return m.textarea.Cursor.BlinkCmd()
+			return cmd
 		}
 		return nil
 
@@ -390,9 +541,9 @@ func (m *DetailModel) handleNormalKeys(msg tea.KeyMsg) tea.Cmd {
 		m.replyThreadID = -1
 		m.mode = modeCompose
 		m.textarea.Reset()
-		m.textarea.Focus()
+		cmd := m.textarea.Focus()
 		m.resizeViewport()
-		return m.textarea.Cursor.BlinkCmd()
+		return cmd
 
 	case key.Matches(msg, key.NewBinding(key.WithKeys("s"))):
 		filtered := m.filterThreads()
@@ -415,6 +566,15 @@ func (m *DetailModel) handleNormalKeys(msg tea.KeyMsg) tea.Cmd {
 
 	case key.Matches(msg, key.NewBinding(key.WithKeys("0"))):
 		return m.startVoteConfirm("Reset vote", 0)
+
+	case key.Matches(msg, key.NewBinding(key.WithKeys("f"))):
+		m.pane = paneFiles
+		if !m.filesLoaded && !m.filesLoading {
+			m.filesLoading = true
+			m.filesErr = nil
+			return m.fetchFiles()
+		}
+		return nil
 	}
 
 	return nil
@@ -432,7 +592,7 @@ func (m *DetailModel) startVoteConfirm(action string, vote int) tea.Cmd {
 	return nil
 }
 
-func (m *DetailModel) handleComposeKeys(msg tea.KeyMsg) tea.Cmd {
+func (m *DetailModel) handleComposeKeys(msg tea.KeyPressMsg) tea.Cmd {
 	switch msg.String() {
 	case "esc":
 		m.mode = modeNormal
@@ -452,7 +612,7 @@ func (m *DetailModel) handleComposeKeys(msg tea.KeyMsg) tea.Cmd {
 	return nil
 }
 
-func (m *DetailModel) handleConfirmKeys(msg tea.KeyMsg) tea.Cmd {
+func (m *DetailModel) handleConfirmKeys(msg tea.KeyPressMsg) tea.Cmd {
 	switch msg.String() {
 	case "y", "Y":
 		m.mode = modeNormal
@@ -514,12 +674,11 @@ func (m *DetailModel) resizeViewport() {
 	}
 
 	if !m.ready {
-		m.viewport = viewport.New(m.width, vpHeight)
-		m.viewport.HighPerformanceRendering = false
+		m.viewport = viewport.New(viewport.WithWidth(m.width), viewport.WithHeight(vpHeight))
 		m.ready = true
 	} else {
-		m.viewport.Width = m.width
-		m.viewport.Height = vpHeight
+		m.viewport.SetWidth(m.width)
+		m.viewport.SetHeight(vpHeight)
 	}
 }
 
@@ -619,7 +778,7 @@ func (m *DetailModel) renderContent() string {
 
 	// Keybinding hints at bottom
 	b.WriteString("\n")
-	hints := theme.HelpDesc.Render("  n/N threads · c reply · C new comment · s resolve · a approve · x reject · ? help")
+	hints := theme.HelpDesc.Render("  f files · n/N threads · c reply · C new comment · s resolve · a approve · x reject · ? help")
 	b.WriteString(wordWrap(hints, wrapWidth))
 	b.WriteString("\n")
 
@@ -720,8 +879,25 @@ func (m DetailModel) View() string {
 
 	var sections []string
 
-	// Main viewport
-	sections = append(sections, m.viewport.View())
+	if m.pane == paneFiles {
+		if m.filesLoading {
+			sections = append(sections, fmt.Sprintf("\n  %s Loading changed files...\n", m.spinner.View()))
+		} else if m.filesErr != nil {
+			sections = append(sections, theme.ErrorText.Render(fmt.Sprintf("\n  Error loading files: %s\n", m.filesErr)))
+		} else {
+			sections = append(sections, m.files.View())
+		}
+	} else if m.pane == paneDiff {
+		if m.diffLoading {
+			sections = append(sections, fmt.Sprintf("\n  %s Loading diff...\n", m.spinner.View()))
+		} else if m.diffErr != nil {
+			sections = append(sections, theme.ErrorText.Render(fmt.Sprintf("\n  Error loading diff: %s\n", m.diffErr)))
+		} else {
+			sections = append(sections, m.diff.View())
+		}
+	} else {
+		sections = append(sections, m.viewport.View())
+	}
 
 	// Flash message
 	if m.flashMsg != "" {
