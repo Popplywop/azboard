@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"azboard/internal/api"
-	"azboard/internal/ui/theme"
+	"github.com/popplywop/azboard/internal/api"
+	"github.com/popplywop/azboard/internal/ui/theme"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/spinner"

@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"os"
 
-	"azboard/internal/api"
-	"azboard/internal/config"
-	"azboard/internal/ui"
+	"github.com/popplywop/azboard/internal/api"
+	"github.com/popplywop/azboard/internal/config"
+	"github.com/popplywop/azboard/internal/ui"
 
 	tea "github.com/charmbracelet/bubbletea"
 )

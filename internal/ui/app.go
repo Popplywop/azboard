@@ -3,9 +3,9 @@ package ui
 import (
 	"fmt"
 
-	"azboard/internal/api"
-	"azboard/internal/ui/prs"
-	"azboard/internal/ui/theme"
+	"github.com/popplywop/azboard/internal/api"
+	"github.com/popplywop/azboard/internal/ui/prs"
+	"github.com/popplywop/azboard/internal/ui/theme"
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
@@ -20,15 +20,15 @@ const (
 )
 
 type AppModel struct {
-	client    *api.Client
-	org       string
-	project   string
+	client     *api.Client
+	org        string
+	project    string
 	activeView view
-	list      prs.ListModel
-	detail    prs.DetailModel
-	width     int
-	height    int
-	showHelp  bool
+	list       prs.ListModel
+	detail     prs.DetailModel
+	width      int
+	height     int
+	showHelp   bool
 }
 
 func NewAppModel(client *api.Client, org, project string) AppModel {

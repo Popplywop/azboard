@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"azboard/internal/config"
+	"github.com/popplywop/azboard/internal/config"
 )
 
 type Client struct {

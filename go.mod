@@ -1,4 +1,4 @@
-module azboard
+module github.com/popplywop/azboard
 
 go 1.24.2
 
