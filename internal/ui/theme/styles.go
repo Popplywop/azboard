@@ -4,16 +4,15 @@ import "charm.land/lipgloss/v2"
 
 var (
 	// Colors
-	Primary   = lipgloss.Color("#7B68EE") // Medium slate blue
-	Secondary = lipgloss.Color("#6C757D")
-	Success   = lipgloss.Color("#28A745")
-	Warning   = lipgloss.Color("#FFC107")
-	Danger    = lipgloss.Color("#DC3545")
-	Info      = lipgloss.Color("#17A2B8")
-	Muted     = lipgloss.Color("#6C757D")
-	White     = lipgloss.Color("#FFFFFF")
-	Subtle    = lipgloss.Color("#383838")
-	Border    = lipgloss.Color("#444444")
+	Primary = lipgloss.Color("#7B68EE") // Medium slate blue
+	Success = lipgloss.Color("#28A745")
+	Warning = lipgloss.Color("#FFC107")
+	Danger  = lipgloss.Color("#DC3545")
+	Info    = lipgloss.Color("#17A2B8")
+	Muted   = lipgloss.Color("#6C757D")
+	White   = lipgloss.Color("#FFFFFF")
+	Subtle  = lipgloss.Color("#383838")
+	Border  = lipgloss.Color("#444444")
 
 	// Tab bar
 	ActiveTab = lipgloss.NewStyle().
@@ -58,6 +57,10 @@ var (
 	VoteApproved = lipgloss.NewStyle().
 			Foreground(Success)
 
+	// vote=5: "Approved with suggestions" — yellow to distinguish from a full approval
+	VoteApprovedWithSuggestions = lipgloss.NewStyle().
+					Foreground(Warning)
+
 	VoteRejected = lipgloss.NewStyle().
 			Foreground(Danger)
 
@@ -101,7 +104,7 @@ var (
 			Foreground(Warning)
 
 	FilePath = lipgloss.NewStyle().
-			Foreground(Secondary).
+			Foreground(Muted).
 			Italic(true)
 
 	// Help
@@ -133,9 +136,6 @@ var (
 	FilterText = lipgloss.NewStyle().
 			Foreground(White)
 
-	FilterCursor = lipgloss.NewStyle().
-			Foreground(Primary)
-
 	FilterBar = lipgloss.NewStyle().
 			BorderBottom(true).
 			BorderStyle(lipgloss.NormalBorder()).
@@ -157,11 +157,6 @@ var (
 			PaddingLeft(3)
 
 	// Compose textarea
-	TextAreaStyle = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(Primary).
-			Padding(0, 1)
-
 	ComposeLabel = lipgloss.NewStyle().
 			Foreground(Primary).
 			Bold(true)
@@ -218,18 +213,22 @@ func StatusStyle(status string, isDraft bool) lipgloss.Style {
 	}
 }
 
-// VoteStyle returns the appropriate style for a reviewer vote.
+// VoteStyle returns the appropriate style for a reviewer vote value.
+// Vote values: 10=approved, 5=approved with suggestions, 0=no vote,
+// -5=waiting for author, -10=rejected.
 func VoteStyle(vote int) lipgloss.Style {
-	switch {
-	case vote >= 10:
+	switch vote {
+	case 10:
 		return VoteApproved
-	case vote > 0:
-		return VoteApproved
-	case vote == 0:
+	case 5:
+		return VoteApprovedWithSuggestions
+	case 0:
 		return VoteNone
-	case vote == -5:
+	case -5:
 		return VoteWaiting
-	default:
+	case -10:
 		return VoteRejected
+	default:
+		return VoteNone // Unknown vote value — neutral
 	}
 }

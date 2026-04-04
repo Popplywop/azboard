@@ -26,7 +26,9 @@ type iterationChangesResponse struct {
 
 // GetPullRequestIterationChanges returns file changes for a PR iteration.
 func (c *Client) GetPullRequestIterationChanges(repoID string, prID, iterationID int) ([]IterationChange, error) {
-	path := fmt.Sprintf("/git/repositories/%s/pullrequests/%d/iterations/%d/changes", repoID, prID, iterationID)
+	// $top=2000 is the ADO maximum; without it the default page size (~100)
+	// would silently truncate PRs that touch more than 100 files.
+	path := fmt.Sprintf("/git/repositories/%s/pullrequests/%d/iterations/%d/changes?$top=2000", repoID, prID, iterationID)
 
 	var resp iterationChangesResponse
 	if err := c.get(path, &resp); err != nil {

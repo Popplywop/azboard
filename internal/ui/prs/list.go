@@ -125,6 +125,16 @@ func (m ListModel) IsFiltering() bool {
 func (m ListModel) fetchPRs() tea.Cmd {
 	scope := m.currentScope()
 	return func() tea.Msg {
+		if scope.DraftOnly {
+			// Use the native ADO isDraft filter rather than fetching all active
+			// PRs and filtering client-side (which would miss PRs beyond page 1).
+			prs, err := m.client.ListDraftPullRequests()
+			if err != nil {
+				return PRsErrorMsg{Err: err}
+			}
+			return PRsLoadedMsg{PRs: prs}
+		}
+
 		if scope.APIStatus == "all" {
 			statuses := []string{"active", "completed", "abandoned"}
 			combined := make([]api.PullRequest, 0)
@@ -171,7 +181,9 @@ func (m ListModel) Update(msg tea.Msg) (ListModel, tea.Cmd) {
 		if m.filtering || m.filter.Value() != "" {
 			filterHeight = 2
 		}
-		m.table.SetHeight(m.height - 8 - filterHeight - 2) // -2 for rounded border
+		// Height breakdown: tab bar (2) + scope bar (2) + status bar (2) + margin (2) = -8;
+		// -2 for the rounded border applied in View().
+		m.table.SetHeight(m.height - 8 - filterHeight - 2)
 
 	case PRsLoadedMsg:
 		m.loading = false
@@ -280,7 +292,9 @@ func (m *ListModel) recalcTableHeight() {
 	if m.filtering || m.filter.Value() != "" {
 		filterHeight = 2
 	}
-	h := m.height - 8 - filterHeight - 2 // -2 for rounded border
+	// Height breakdown: tab bar (2) + scope bar (2) + status bar (2) + margin (2) = -8;
+	// -2 for the rounded border applied in View().
+	h := m.height - 8 - filterHeight - 2
 	if h < 5 {
 		h = 5
 	}
@@ -489,10 +503,10 @@ func (m *ListModel) cycleScope(delta int) {
 }
 
 func (m ListModel) matchesScope(pr api.PullRequest) bool {
-	scope := m.currentScope()
-	if scope.DraftOnly {
-		return pr.IsDraft
-	}
+	// When DraftOnly is set, the API already returned only draft PRs, so no
+	// additional client-side filtering is needed. For all other scopes, every
+	// PR in m.prs already matches the API-level status filter.
+	_ = pr
 	return true
 }
 

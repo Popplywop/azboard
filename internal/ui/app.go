@@ -52,6 +52,18 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		// When in detail view, apply the same -3 header/footer offset that is
+		// used on the initial SelectPRMsg transition so sizing is consistent
+		// after any terminal resize.
+		if m.activeView == viewDetail {
+			var cmd tea.Cmd
+			m.detail, cmd = m.detail.Update(tea.WindowSizeMsg{
+				Width:  msg.Width,
+				Height: msg.Height - 3,
+			})
+			cmds = append(cmds, cmd)
+			return m, tea.Batch(cmds...)
+		}
 
 	case tea.KeyPressMsg:
 		// Don't intercept keys when the filter input or compose/confirm is focused
@@ -202,6 +214,16 @@ func (m AppModel) renderHelp() string {
 		{"q", "Back to list"},
 	}
 
+	filesDiffBindings := []struct {
+		key  string
+		desc string
+	}{
+		{"enter", "View diff / toggle dir collapse"},
+		{"r", "Refresh file list"},
+		{"esc", "Back (diff → files, files → overview)"},
+		{"↑/↓", "Navigate / scroll"},
+	}
+
 	var lines []string
 	lines = append(lines, "")
 
@@ -219,6 +241,17 @@ func (m AppModel) renderHelp() string {
 	lines = append(lines, theme.SectionHeader.Render("  PR Detail"))
 	lines = append(lines, "")
 	for _, b := range detailBindings {
+		line := fmt.Sprintf("  %s  %s",
+			theme.HelpKey.Width(12).Render(b.key),
+			theme.HelpDesc.Render(b.desc),
+		)
+		lines = append(lines, line)
+	}
+
+	lines = append(lines, "")
+	lines = append(lines, theme.SectionHeader.Render("  Files / Diff pane"))
+	lines = append(lines, "")
+	for _, b := range filesDiffBindings {
 		line := fmt.Sprintf("  %s  %s",
 			theme.HelpKey.Width(12).Render(b.key),
 			theme.HelpDesc.Render(b.desc),

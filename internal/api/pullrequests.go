@@ -18,6 +18,19 @@ func (c *Client) ListPullRequests(status string) ([]PullRequest, error) {
 	return resp.Value, nil
 }
 
+// ListDraftPullRequests returns only draft (active) pull requests, using the
+// native ADO isDraft filter so the server filters rather than the client.
+func (c *Client) ListDraftPullRequests() ([]PullRequest, error) {
+	path := "/git/pullrequests?searchCriteria.status=active&searchCriteria.isDraft=true"
+
+	var resp ListResponse[PullRequest]
+	if err := c.get(path, &resp); err != nil {
+		return nil, fmt.Errorf("list draft pull requests: %w", err)
+	}
+
+	return resp.Value, nil
+}
+
 // GetPullRequest returns a single pull request by repository and PR ID.
 func (c *Client) GetPullRequest(repoID string, prID int) (*PullRequest, error) {
 	path := fmt.Sprintf("/git/repositories/%s/pullrequests/%d", repoID, prID)

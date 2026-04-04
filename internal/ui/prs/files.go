@@ -161,7 +161,7 @@ func (m FilesModel) View() string {
 	b.WriteString("\n")
 	b.WriteString(theme.TableBorder.Render(m.table.View()))
 	b.WriteString("\n")
-	b.WriteString(theme.HelpDesc.Render("  ↑/↓ navigate · enter toggle dir / view diff · esc back"))
+	b.WriteString(theme.HelpDesc.Render("  ↑/↓ navigate · enter toggle dir / view diff · r refresh · esc back"))
 	return b.String()
 }
 

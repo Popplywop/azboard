@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/popplywop/azboard/internal/api"
 	"github.com/popplywop/azboard/internal/ui/theme"
@@ -908,7 +909,7 @@ func (m DetailModel) View() string {
 	if m.mode == modeCompose {
 		label := "New comment:"
 		if m.replyThreadID != -1 {
-			label = fmt.Sprintf("Replying to thread:")
+			label = fmt.Sprintf("Replying to thread #%d:", m.replyThreadID)
 		}
 		sections = append(sections, theme.ComposeLabel.Render("  "+label))
 		sections = append(sections, m.textarea.View())
@@ -919,6 +920,7 @@ func (m DetailModel) View() string {
 	if m.mode == modeConfirm {
 		prompt := fmt.Sprintf("  %s this PR? (y/n)", m.confirmAction)
 		sections = append(sections, theme.ConfirmPrompt.Render(prompt))
+		sections = append(sections, theme.ConfirmHint.Render("  y confirm · n/esc cancel"))
 	}
 
 	return strings.Join(sections, "\n")
@@ -941,7 +943,7 @@ func wordWrap(text string, width int) string {
 }
 
 func wrapLine(line string, width int) string {
-	if len(line) <= width {
+	if utf8.RuneCountInString(line) <= width {
 		return line
 	}
 
@@ -953,18 +955,19 @@ func wrapLine(line string, width int) string {
 
 	lineLen := 0
 	for i, word := range words {
-		wordLen := len(word)
+		wordLen := utf8.RuneCountInString(word)
 
 		if i == 0 {
 			// Handle words longer than width
 			if wordLen > width {
-				for len(word) > width {
-					result.WriteString(word[:width])
+				runes := []rune(word)
+				for len(runes) > width {
+					result.WriteString(string(runes[:width]))
 					result.WriteString("\n")
-					word = word[width:]
+					runes = runes[width:]
 				}
-				result.WriteString(word)
-				lineLen = len(word)
+				result.WriteString(string(runes))
+				lineLen = len(runes)
 			} else {
 				result.WriteString(word)
 				lineLen = wordLen
@@ -976,13 +979,14 @@ func wrapLine(line string, width int) string {
 			result.WriteString("\n")
 			// Handle words longer than width
 			if wordLen > width {
-				for len(word) > width {
-					result.WriteString(word[:width])
+				runes := []rune(word)
+				for len(runes) > width {
+					result.WriteString(string(runes[:width]))
 					result.WriteString("\n")
-					word = word[width:]
+					runes = runes[width:]
 				}
-				result.WriteString(word)
-				lineLen = len(word)
+				result.WriteString(string(runes))
+				lineLen = len(runes)
 			} else {
 				result.WriteString(word)
 				lineLen = wordLen

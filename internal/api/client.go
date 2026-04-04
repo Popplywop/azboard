@@ -155,9 +155,12 @@ func (c *Client) doRequest(method, fullURL string, body interface{}, result inte
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusUnauthorized {
+		// Close the 401 response body explicitly before retrying to avoid
+		// leaking the connection (a deferred close on the reassigned resp
+		// variable would miss this body).
+		resp.Body.Close()
 		if c.authMethod == config.AuthAzCLI {
 			c.mu.Lock()
 			err := c.refreshAzCLIToken()
@@ -184,6 +187,8 @@ func (c *Client) doRequest(method, fullURL string, body interface{}, result inte
 		} else {
 			return fmt.Errorf("authentication failed — check that your PAT is valid and has not expired")
 		}
+	} else {
+		defer resp.Body.Close()
 	}
 
 	// Accept 2xx status codes
@@ -220,4 +225,66 @@ func (c *Client) patch(path string, body interface{}, result interface{}) error 
 // getOrg makes a GET request against the org-level URL (no project in path).
 func (c *Client) getOrg(path string, result interface{}) error {
 	return c.doRequest("GET", c.orgURL+path, nil, result)
+}
+
+// getContent fetches raw file content (not JSON-decoded) for a given path.
+// Used for git item endpoints where $format=text returns plain bytes.
+func (c *Client) getContent(path string) (string, error) {
+	if err := c.ensureToken(); err != nil {
+		return "", err
+	}
+
+	fullURL := c.baseURL + path
+	if strings.Contains(fullURL, "?") {
+		fullURL += "&api-version=7.1"
+	} else {
+		fullURL += "?api-version=7.1"
+	}
+
+	doGet := func() (*http.Response, error) {
+		req, err := http.NewRequest("GET", fullURL, nil)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create request: %w", err)
+		}
+		req.Header.Set("Authorization", c.authHeader())
+		req.Header.Set("Accept", "text/plain")
+		return c.httpClient.Do(req)
+	}
+
+	resp, err := doGet()
+	if err != nil {
+		return "", fmt.Errorf("request failed: %w", err)
+	}
+
+	if resp.StatusCode == http.StatusUnauthorized {
+		resp.Body.Close()
+		if c.authMethod == config.AuthAzCLI {
+			c.mu.Lock()
+			err = c.refreshAzCLIToken()
+			c.mu.Unlock()
+			if err != nil {
+				return "", fmt.Errorf("token refresh failed: %w", err)
+			}
+			resp, err = doGet()
+			if err != nil {
+				return "", fmt.Errorf("retry request failed: %w", err)
+			}
+			defer resp.Body.Close()
+		} else {
+			return "", fmt.Errorf("authentication failed — check that your PAT is valid and has not expired")
+		}
+	} else {
+		defer resp.Body.Close()
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("API returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response body: %w", err)
+	}
+	return string(data), nil
 }

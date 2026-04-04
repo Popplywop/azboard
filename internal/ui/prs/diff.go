@@ -60,8 +60,8 @@ func (m DiffModel) Update(msg tea.Msg) (DiffModel, tea.Cmd) {
 }
 
 func (m DiffModel) View() string {
-	if !m.ready {
-		return "Loading diff..."
+	if !m.ready || m.path == "" {
+		return theme.HelpDesc.Render("  No diff loaded.")
 	}
 	return theme.SectionHeader.Render("Diff: "+m.path) + "\n" + m.viewport.View() + "\n" +
 		theme.HelpDesc.Render("  ↑/↓ scroll · esc back")

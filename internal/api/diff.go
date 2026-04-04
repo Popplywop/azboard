@@ -8,27 +8,17 @@ import (
 	"github.com/pmezard/go-difflib/difflib"
 )
 
-type gitItemResponse struct {
-	Path    string `json:"path"`
-	Content string `json:"content"`
-}
-
-// GetFileContentAtCommit fetches file content for a specific commit.
+// GetFileContentAtCommit fetches the raw content of a file at a specific commit.
+// Uses $format=text to retrieve plain bytes, which works for files of any size.
 func (c *Client) GetFileContentAtCommit(repoID, filePath, commitID string) (string, error) {
 	v := url.Values{}
 	v.Set("path", filePath)
 	v.Set("versionType", "commit")
 	v.Set("version", commitID)
-	v.Set("includeContent", "true")
+	v.Set("$format", "text")
 
 	path := fmt.Sprintf("/git/repositories/%s/items?%s", repoID, v.Encode())
-
-	var item gitItemResponse
-	if err := c.get(path, &item); err != nil {
-		return "", err
-	}
-
-	return item.Content, nil
+	return c.getContent(path)
 }
 
 // BuildUnifiedDiff generates a local unified diff for a changed file.
@@ -74,7 +64,13 @@ func (c *Client) BuildUnifiedDiff(repoID string, change IterationChange, oldComm
 	}
 
 	if strings.TrimSpace(diff) == "" {
-		return fmt.Sprintf("--- a%s\n+++ b%s\n(no textual changes)\n", oldPath, newPath), nil
+		diff = fmt.Sprintf("--- a%s\n+++ b%s\n(no textual changes)\n", oldPath, newPath)
+	}
+
+	// For rename changes, prepend a git-style rename header so the viewer can
+	// tell this was a rename rather than a delete+add of unrelated files.
+	if changeType == "rename" && oldPath != newPath {
+		diff = fmt.Sprintf("rename from %s\nrename to %s\n", oldPath, newPath) + diff
 	}
 
 	return diff, nil
