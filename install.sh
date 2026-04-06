@@ -18,13 +18,14 @@ case "${OS}" in
     ;;
 esac
 
-# Detect architecture
-ARCH="$(uname -m)"
-case "${ARCH}" in
+# Detect architecture (or allow override via INSTALL_ARCH)
+ARCH_RAW="${INSTALL_ARCH:-$(uname -m)}"
+case "${ARCH_RAW}" in
   x86_64|amd64) ARCH=amd64 ;;
   arm64|aarch64) ARCH=arm64 ;;
   *)
-    echo "Unsupported architecture: ${ARCH}"
+    echo "Unsupported architecture: ${ARCH_RAW}"
+    echo "Supported values: amd64, arm64"
     exit 1
     ;;
 esac
