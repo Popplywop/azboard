@@ -23,6 +23,20 @@ Installs the latest release to `/usr/local/bin`. To install elsewhere:
 INSTALL_DIR=~/.local/bin curl -fsSL https://raw.githubusercontent.com/Popplywop/azboard/main/install.sh | sh
 ```
 
+### Script (Windows)
+
+Run in PowerShell:
+
+```powershell
+iwr https://raw.githubusercontent.com/Popplywop/azboard/main/install.ps1 | iex
+```
+
+Installs to `%LOCALAPPDATA%\azboard` and adds it to your user `PATH` automatically. To install elsewhere:
+
+```powershell
+$env:INSTALL_DIR="C:\Tools"; iwr https://raw.githubusercontent.com/Popplywop/azboard/main/install.ps1 | iex
+```
+
 ### Pre-built binaries
 
 Download the latest release for your platform from the
