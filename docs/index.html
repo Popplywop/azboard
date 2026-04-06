@@ -56,12 +56,6 @@
       margin-top: 22px;
     }
 
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 14px;
-    }
-
     .btn {
       display: inline-block;
       padding: 10px 14px;
@@ -117,13 +111,6 @@
       font-size: 0.95rem;
     }
 
-    .platform-card {
-      padding: 14px;
-      border: 1px solid var(--line);
-      border-radius: 12px;
-      background: rgba(13, 22, 36, 0.65);
-    }
-
     .label {
       display: block;
       margin: 0 0 8px;
@@ -141,19 +128,32 @@
       color: var(--text);
     }
 
-    .copy-row {
-      margin-top: 10px;
-      display: flex;
-      justify-content: flex-end;
+    .install-controls {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .command-wrap {
+      position: relative;
+      margin-top: 2px;
     }
 
     .copy-btn {
-      border: 1px solid var(--line);
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      width: 34px;
+      height: 34px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid #334b72;
       background: #12213a;
       color: var(--text);
       border-radius: 8px;
-      padding: 8px 11px;
-      font-size: 0.9rem;
+      padding: 0;
       cursor: pointer;
       transition: border-color 120ms ease, background 120ms ease;
     }
@@ -163,12 +163,23 @@
       background: #163051;
     }
 
+    .copy-btn svg {
+      width: 17px;
+      height: 17px;
+      fill: currentColor;
+    }
+
+    .copy-btn.copied {
+      border-color: var(--accent);
+      color: #9ff0d5;
+    }
+
     code { font-family: "JetBrains Mono", "Cascadia Code", monospace; }
     .muted { color: var(--muted); }
     footer { margin-top: 24px; color: var(--muted); font-size: 0.95rem; }
 
     @media (max-width: 820px) {
-      .grid { grid-template-columns: 1fr; }
+      .install-controls { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -185,33 +196,32 @@
 
     <section>
       <h2>Quick install</h2>
-      <p class="muted">Pick your platform and architecture, then copy the install command.</p>
+      <p class="muted">Choose your platform, then copy one command.</p>
 
-      <div class="grid">
-        <div class="platform-card">
-          <h3>Linux / macOS</h3>
-          <label class="label" for="unix-arch">Architecture</label>
-          <select id="unix-arch" class="select" aria-label="Linux or macOS architecture">
+      <div class="install-controls">
+        <div>
+          <label class="label" for="platform">Platform</label>
+          <select id="platform" class="select" aria-label="Platform">
+            <option value="unix">Linux / macOS</option>
+            <option value="windows">Windows (PowerShell)</option>
+          </select>
+        </div>
+        <div id="arch-wrap">
+          <label class="label" for="arch">Architecture</label>
+          <select id="arch" class="select" aria-label="Architecture">
             <option value="amd64">amd64 (x86_64)</option>
             <option value="arm64">arm64 (Apple Silicon / aarch64)</option>
           </select>
-          <pre><code id="unix-cmd">INSTALL_ARCH=amd64 curl -fsSL https://popplywop.github.io/azboard/install.sh | sh</code></pre>
-          <div class="copy-row">
-            <button class="copy-btn" type="button" data-copy-target="unix-cmd">Copy command</button>
-          </div>
         </div>
+      </div>
 
-        <div class="platform-card">
-          <h3>Windows (PowerShell)</h3>
-          <label class="label" for="win-arch">Architecture</label>
-          <select id="win-arch" class="select" aria-label="Windows architecture">
-            <option value="amd64">amd64 (x86_64)</option>
-          </select>
-          <pre><code id="win-cmd">iwr https://popplywop.github.io/azboard/install.ps1 | iex</code></pre>
-          <div class="copy-row">
-            <button class="copy-btn" type="button" data-copy-target="win-cmd">Copy command</button>
-          </div>
-        </div>
+      <div class="command-wrap">
+        <pre><code id="install-cmd">INSTALL_ARCH=amd64 curl -fsSL https://popplywop.github.io/azboard/install.sh | sh</code></pre>
+        <button class="copy-btn" type="button" id="copy-btn" aria-label="Copy install command" title="Copy install command">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M16 1H6a2 2 0 0 0-2 2v12h2V3h10V1zm3 4H10a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H10V7h9v14z"/>
+          </svg>
+        </button>
       </div>
     </section>
 
@@ -232,13 +242,24 @@
 
   <script>
     (function () {
-      const unixArch = document.getElementById("unix-arch");
-      const unixCmd = document.getElementById("unix-cmd");
-      const baseUnix = "curl -fsSL https://popplywop.github.io/azboard/install.sh | sh";
+      const platform = document.getElementById("platform");
+      const arch = document.getElementById("arch");
+      const archWrap = document.getElementById("arch-wrap");
+      const installCmd = document.getElementById("install-cmd");
+      const copyBtn = document.getElementById("copy-btn");
 
-      function updateUnixCommand() {
-        const arch = unixArch.value;
-        unixCmd.textContent = "INSTALL_ARCH=" + arch + " " + baseUnix;
+      const unixBase = "curl -fsSL https://popplywop.github.io/azboard/install.sh | sh";
+      const windowsCmd = "iwr https://popplywop.github.io/azboard/install.ps1 | iex";
+
+      function updateCommand() {
+        if (platform.value === "windows") {
+          archWrap.style.display = "none";
+          installCmd.textContent = windowsCmd;
+          return;
+        }
+
+        archWrap.style.display = "block";
+        installCmd.textContent = "INSTALL_ARCH=" + arch.value + " " + unixBase;
       }
 
       async function copyText(text) {
@@ -255,33 +276,25 @@
         document.body.removeChild(fallback);
       }
 
-      function setButtonState(button, message) {
-        const original = button.textContent;
-        button.textContent = message;
+      function flashCopiedState() {
+        copyBtn.classList.add("copied");
         setTimeout(function () {
-          button.textContent = original;
+          copyBtn.classList.remove("copied");
         }, 1400);
       }
 
-      document.querySelectorAll("[data-copy-target]").forEach(function (button) {
-        button.addEventListener("click", async function () {
-          const id = button.getAttribute("data-copy-target");
-          const target = document.getElementById(id);
-          if (!target) {
-            return;
-          }
-
-          try {
-            await copyText(target.textContent);
-            setButtonState(button, "Copied");
-          } catch (err) {
-            setButtonState(button, "Copy failed");
-          }
-        });
+      copyBtn.addEventListener("click", async function () {
+        try {
+          await copyText(installCmd.textContent);
+          flashCopiedState();
+        } catch (err) {
+          copyBtn.classList.remove("copied");
+        }
       });
 
-      unixArch.addEventListener("change", updateUnixCommand);
-      updateUnixCommand();
+      platform.addEventListener("change", updateCommand);
+      arch.addEventListener("change", updateCommand);
+      updateCommand();
     })();
   </script>
 </body>
