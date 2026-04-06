@@ -13,19 +13,28 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
+// version is set at build time via -ldflags "-X main.version=v0.0.1".
+var version = "dev"
+
 func main() {
-	// Parse optional --pr <id> flag before loading config.
+	// Parse optional flags before loading config.
 	var jumpToPRID int
 	args := os.Args[1:]
 	for i := 0; i < len(args); i++ {
-		if args[i] == "--pr" && i+1 < len(args) {
-			id, err := strconv.Atoi(args[i+1])
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error: --pr requires an integer PR ID\n")
-				os.Exit(1)
+		switch args[i] {
+		case "--version", "-version", "-v":
+			fmt.Println("azboard", version)
+			os.Exit(0)
+		case "--pr":
+			if i+1 < len(args) {
+				id, err := strconv.Atoi(args[i+1])
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Error: --pr requires an integer PR ID\n")
+					os.Exit(1)
+				}
+				jumpToPRID = id
+				i++
 			}
-			jumpToPRID = id
-			i++
 		}
 	}
 

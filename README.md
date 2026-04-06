@@ -56,7 +56,7 @@ AZBOARD_WORK_ITEM_TYPES=User Story,Bug,Task
 AZBOARD_DEFAULT_MERGE_STRATEGY=squash
 ```
 
-Config priority: CLI flags > environment variables > config file.
+Config is read exclusively from the config file above.
 
 ### Auth methods
 
@@ -80,9 +80,14 @@ AZBOARD_PAT=your-pat-token
 ## Usage
 
 ```bash
+# Launch the TUI
 azboard
-# or with overrides:
-azboard --org https://dev.azure.com/my-org --project my-project
+
+# Jump directly to a specific PR by ID
+azboard --pr 12345
+
+# Print version
+azboard --version
 ```
 
 On first launch with no `AZBOARD_REPOS` configured, you will see an empty state. Press `R`
@@ -142,7 +147,7 @@ to open the repo picker and select which repositories to load.
 - **Azure CLI auth** — automatic token acquisition and refresh via `az account get-access-token`
 - **PAT auth** — static personal access token
 - **URL format support** — both `https://dev.azure.com/org` and `https://org.visualstudio.com`
-- **Config priority** — CLI flags override environment variables, which override the config file
+- **Config priority** — all settings come from `~/.config/azboard/config.env`
 
 ---
 
@@ -253,10 +258,4 @@ Build and run locally:
 
 ```bash
 go build -o azboard . && ./azboard
-```
-
-Run with a custom config:
-
-```bash
-./azboard --config /path/to/config.env
 ```
