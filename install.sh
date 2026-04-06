@@ -42,18 +42,37 @@ fi
 VERSION_NUM="${VERSION#v}"
 
 ARCHIVE="${BINARY}_${VERSION_NUM}_${OS}_${ARCH}.tar.gz"
-URL="https://github.com/${REPO}/releases/download/${VERSION}/${ARCHIVE}"
+BASE_URL="https://github.com/${REPO}/releases/download/${VERSION}"
+URL="${BASE_URL}/${ARCHIVE}"
 
 echo "Installing ${BINARY} ${VERSION} (${OS}/${ARCH})..."
 
-# Download and extract to a temp dir
+# Download to a temp dir
 TMP="$(mktemp -d)"
 trap 'rm -rf "${TMP}"' EXIT
 
-curl -fsSL "${URL}" -o "${TMP}/${ARCHIVE}"
+curl -fsSL "${URL}"                              -o "${TMP}/${ARCHIVE}"
+curl -fsSL "${URL}.sig"                         -o "${TMP}/${ARCHIVE}.sig"
+curl -fsSL "${URL}.pem"                         -o "${TMP}/${ARCHIVE}.pem"
+
+# Verify cosign signature if cosign is available
+if command -v cosign >/dev/null 2>&1; then
+  echo "Verifying signature with cosign..."
+  cosign verify-blob \
+    --certificate         "${TMP}/${ARCHIVE}.pem" \
+    --signature           "${TMP}/${ARCHIVE}.sig" \
+    --certificate-identity-regexp "https://github.com/${REPO}" \
+    --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+    "${TMP}/${ARCHIVE}"
+  echo "Signature verified."
+else
+  echo "cosign not found — skipping signature verification."
+  echo "Install cosign to verify: https://docs.sigstore.dev/cosign/system_config/installation/"
+fi
+
+# Extract and install
 tar -xzf "${TMP}/${ARCHIVE}" -C "${TMP}"
 
-# Install binary
 if [ -w "${INSTALL_DIR}" ]; then
   mv "${TMP}/${BINARY}" "${INSTALL_DIR}/${BINARY}"
 else

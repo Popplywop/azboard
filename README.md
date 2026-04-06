@@ -51,6 +51,31 @@ mv azboard /usr/local/bin/azboard
 
 ---
 
+## Verifying releases
+
+All release artifacts are signed using [cosign](https://docs.sigstore.dev/cosign/system_config/installation/)
+keyless signing via GitHub Actions. No private key is managed — signatures are tied to the
+GitHub Actions OIDC identity and recorded in the
+[Rekor](https://rekor.sigstore.dev) public transparency log.
+
+To verify a downloaded archive:
+
+```bash
+cosign verify-blob \
+  --certificate         azboard_0.0.1_linux_amd64.tar.gz.pem \
+  --signature           azboard_0.0.1_linux_amd64.tar.gz.sig \
+  --certificate-identity-regexp "https://github.com/Popplywop/azboard" \
+  --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+  azboard_0.0.1_linux_amd64.tar.gz
+```
+
+The `.sig` and `.pem` files are attached to each release alongside the archives.
+
+If `cosign` is present on your system, `install.sh` verifies the signature automatically
+before installing.
+
+---
+
 ## Configuration
 
 Create `~/.config/azboard/config.env`:
