@@ -215,11 +215,14 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		switch {
 		case key.Matches(msg, Keys.Quit):
-			if m.activeView == viewDetail || m.activeView == viewCreatePR || m.activeView == viewWorkItemDetail {
+			if m.activeView == viewDetail || m.activeView == viewCreatePR {
 				m.activeView = viewList
-				if m.activeTab == tabWorkItems {
-					m.activeView = viewWorkItems
-				}
+				var cmd tea.Cmd
+				m.list, cmd = m.list.RefreshWithRepos(m.repos)
+				return m, cmd
+			}
+			if m.activeView == viewWorkItemDetail {
+				m.activeView = viewWorkItems
 				return m, nil
 			}
 			return m, tea.Quit
