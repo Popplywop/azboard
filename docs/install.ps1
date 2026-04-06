@@ -1,9 +1,8 @@
 # install.ps1 - azboard installer for Windows
-# Canonical hosted installer: https://popplywop.github.io/azboard/install.ps1
 # Usage:
-#   iwr https://raw.githubusercontent.com/Popplywop/azboard/main/install.ps1 | iex
+#   iwr https://popplywop.github.io/azboard/install.ps1 | iex
 # Or with a custom install directory:
-#   $env:INSTALL_DIR="C:\Tools"; iwr https://raw.githubusercontent.com/Popplywop/azboard/main/install.ps1 | iex
+#   $env:INSTALL_DIR="C:\Tools"; iwr https://popplywop.github.io/azboard/install.ps1 | iex
 
 $ErrorActionPreference = "Stop"
 

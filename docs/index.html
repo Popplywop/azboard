@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>azboard - Azure DevOps TUI</title>
+  <meta name="description" content="azboard is a keyboard-driven terminal UI for Azure DevOps pull requests and work items.">
+  <style>
+    :root {
+      --bg: #0f1724;
+      --bg-alt: #131f33;
+      --card: #18263c;
+      --text: #e8f0ff;
+      --muted: #b7c6e3;
+      --line: #2c3f5f;
+      --accent: #4fd1a9;
+      --accent-strong: #34c38f;
+      --shadow: 0 12px 30px rgba(2, 8, 20, 0.45);
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "Avenir Next", "Helvetica Neue", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(1000px 380px at 0% 0%, #1c2f4d 0%, rgba(28, 47, 77, 0) 70%),
+        radial-gradient(900px 320px at 100% 0%, #1b3f46 0%, rgba(27, 63, 70, 0) 68%),
+        linear-gradient(180deg, var(--bg) 0%, #0b1220 100%);
+      line-height: 1.5;
+    }
+
+    .wrap {
+      width: min(980px, 92vw);
+      margin: 0 auto;
+      padding: 40px 0 56px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(2rem, 4vw, 3.2rem);
+      letter-spacing: 0.02em;
+    }
+
+    p.lead {
+      margin: 14px 0 0;
+      color: var(--muted);
+      max-width: 70ch;
+      font-size: 1.05rem;
+    }
+
+    .row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 22px;
+    }
+
+    .btn {
+      display: inline-block;
+      padding: 10px 14px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      color: var(--text);
+      text-decoration: none;
+      background: var(--bg-alt);
+      transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+    }
+
+    .btn:hover {
+      transform: translateY(-1px);
+      border-color: var(--accent);
+      background: #1a2a42;
+    }
+
+    .btn.primary {
+      background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
+      color: #06291f;
+      border-color: transparent;
+      font-weight: 600;
+    }
+
+    section {
+      margin-top: 26px;
+      padding: 18px;
+      border-radius: 14px;
+      background: linear-gradient(180deg, rgba(24, 38, 60, 0.9), rgba(15, 24, 38, 0.95));
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow);
+    }
+
+    h2 {
+      margin: 0 0 10px;
+      font-size: 1.2rem;
+    }
+
+    ul {
+      margin: 0;
+      padding-left: 18px;
+      color: var(--muted);
+    }
+
+    pre {
+      margin: 10px 0 0;
+      padding: 12px;
+      background: #0a1221;
+      border: 1px solid #2a3b5a;
+      border-radius: 10px;
+      overflow-x: auto;
+      color: #ddf3ff;
+      font-size: 0.95rem;
+    }
+
+    code { font-family: "JetBrains Mono", "Cascadia Code", monospace; }
+    .muted { color: var(--muted); }
+    footer { margin-top: 24px; color: var(--muted); font-size: 0.95rem; }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <h1>azboard</h1>
+    <p class="lead">A fast, keyboard-driven terminal UI for Azure DevOps. Review pull requests, manage work items, and stay in your terminal.</p>
+
+    <div class="row">
+      <a class="btn primary" href="https://github.com/Popplywop/azboard/releases/latest">Download latest release</a>
+      <a class="btn" href="https://github.com/Popplywop/azboard">GitHub repository</a>
+      <a class="btn" href="https://github.com/Popplywop/azboard#readme">Full README</a>
+    </div>
+
+    <section>
+      <h2>Quick install</h2>
+      <p class="muted">Install scripts are hosted directly from this Pages site.</p>
+      <pre><code>curl -fsSL https://popplywop.github.io/azboard/install.sh | sh</code></pre>
+      <pre><code>iwr https://popplywop.github.io/azboard/install.ps1 | iex</code></pre>
+    </section>
+
+    <section>
+      <h2>What you get</h2>
+      <ul>
+        <li>Pull request list/detail views with filtering, voting, comments, and merge actions</li>
+        <li>Code review workflow with file tree, diff viewer, iterations, and inline comments</li>
+        <li>Work item browsing, updates, comments, and PR linking</li>
+        <li>Config-driven setup for Azure DevOps org/project/repo selection</li>
+      </ul>
+    </section>
+
+    <footer>
+      Built with Bubble Tea, Bubbles, and Lip Gloss.
+    </footer>
+  </main>
+</body>
+</html>

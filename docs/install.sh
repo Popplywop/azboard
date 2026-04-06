@@ -1,8 +1,6 @@
 #!/usr/bin/env sh
 set -e
 
-# Canonical hosted installer: https://popplywop.github.io/azboard/install.sh
-
 REPO="Popplywop/azboard"
 BINARY="azboard"
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"

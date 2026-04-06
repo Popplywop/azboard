@@ -7,6 +7,8 @@ Built with [Bubble Tea](https://github.com/charmbracelet/bubbletea),
 [Bubbles](https://github.com/charmbracelet/bubbles), and
 [Lip Gloss](https://github.com/charmbracelet/lipgloss).
 
+**Documentation & project page:** https://popplywop.github.io/azboard
+
 ---
 
 ## Installation
@@ -14,13 +16,13 @@ Built with [Bubble Tea](https://github.com/charmbracelet/bubbletea),
 ### Script (Linux & macOS)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Popplywop/azboard/main/install.sh | sh
+curl -fsSL https://popplywop.github.io/azboard/install.sh | sh
 ```
 
 Installs the latest release to `/usr/local/bin`. To install elsewhere:
 
 ```bash
-INSTALL_DIR=~/.local/bin curl -fsSL https://raw.githubusercontent.com/Popplywop/azboard/main/install.sh | sh
+INSTALL_DIR=~/.local/bin curl -fsSL https://popplywop.github.io/azboard/install.sh | sh
 ```
 
 ### Script (Windows)
@@ -28,13 +30,13 @@ INSTALL_DIR=~/.local/bin curl -fsSL https://raw.githubusercontent.com/Popplywop/
 Run in PowerShell:
 
 ```powershell
-iwr https://raw.githubusercontent.com/Popplywop/azboard/main/install.ps1 | iex
+iwr https://popplywop.github.io/azboard/install.ps1 | iex
 ```
 
 Installs to `%LOCALAPPDATA%\azboard` and adds it to your user `PATH` automatically. To install elsewhere:
 
 ```powershell
-$env:INSTALL_DIR="C:\Tools"; iwr https://raw.githubusercontent.com/Popplywop/azboard/main/install.ps1 | iex
+$env:INSTALL_DIR="C:\Tools"; iwr https://popplywop.github.io/azboard/install.ps1 | iex
 ```
 
 ### Pre-built binaries
