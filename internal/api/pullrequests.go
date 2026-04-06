@@ -18,6 +18,18 @@ func (c *Client) ListPullRequests(status string) ([]PullRequest, error) {
 	return resp.Value, nil
 }
 
+// ListPullRequestsForRepo returns pull requests for a specific repository.
+func (c *Client) ListPullRequestsForRepo(repoName, status string) ([]PullRequest, error) {
+	path := fmt.Sprintf("/git/repositories/%s/pullrequests?searchCriteria.status=%s", repoName, status)
+
+	var resp ListResponse[PullRequest]
+	if err := c.get(path, &resp); err != nil {
+		return nil, fmt.Errorf("list pull requests for repo %s: %w", repoName, err)
+	}
+
+	return resp.Value, nil
+}
+
 // ListDraftPullRequests returns only draft (active) pull requests, using the
 // native ADO isDraft filter so the server filters rather than the client.
 func (c *Client) ListDraftPullRequests() ([]PullRequest, error) {
@@ -29,6 +41,39 @@ func (c *Client) ListDraftPullRequests() ([]PullRequest, error) {
 	}
 
 	return resp.Value, nil
+}
+
+// ListDraftPullRequestsForRepo returns only draft PRs for a specific repo.
+func (c *Client) ListDraftPullRequestsForRepo(repoName string) ([]PullRequest, error) {
+	path := fmt.Sprintf("/git/repositories/%s/pullrequests?searchCriteria.status=active&searchCriteria.isDraft=true", repoName)
+
+	var resp ListResponse[PullRequest]
+	if err := c.get(path, &resp); err != nil {
+		return nil, fmt.Errorf("list draft pull requests for repo %s: %w", repoName, err)
+	}
+
+	return resp.Value, nil
+}
+
+// GetPullRequestByID returns a single pull request by project-wide PR ID,
+// without needing to know the repository up front.
+//
+// The ADO searchCriteria.pullRequestId filter is ignored by some org
+// configurations (returns all PRs regardless), so we fetch all PRs with
+// status=all and client-side filter by PullRequestID.
+func (c *Client) GetPullRequestByID(prID int) (*PullRequest, error) {
+	path := fmt.Sprintf("/git/pullrequests?searchCriteria.status=all&searchCriteria.pullRequestId=%d", prID)
+
+	var resp ListResponse[PullRequest]
+	if err := c.get(path, &resp); err != nil {
+		return nil, fmt.Errorf("get pull request %d: %w", prID, err)
+	}
+	for i := range resp.Value {
+		if resp.Value[i].PullRequestID == prID {
+			return &resp.Value[i], nil
+		}
+	}
+	return nil, fmt.Errorf("pull request %d not found", prID)
 }
 
 // GetPullRequest returns a single pull request by repository and PR ID.
@@ -55,15 +100,67 @@ func (c *Client) GetPullRequestThreads(repoID string, prID int) ([]Thread, error
 	return resp.Value, nil
 }
 
+// CreatePullRequest creates a new pull request in the given repository.
+func (c *Client) CreatePullRequest(repoID, title, sourceBranch, targetBranch, description string, isDraft bool) (PullRequest, error) {
+	path := fmt.Sprintf("/git/repositories/%s/pullrequests", repoID)
+
+	body := CreatePullRequestRequest{
+		Title:         title,
+		Description:   description,
+		SourceRefName: sourceBranch,
+		TargetRefName: targetBranch,
+		IsDraft:       isDraft,
+	}
+
+	var pr PullRequest
+	if err := c.post(path, body, &pr); err != nil {
+		return PullRequest{}, fmt.Errorf("create pull request: %w", err)
+	}
+	return pr, nil
+}
+
+// MergePullRequest completes (merges) a pull request.
+// strategy must be one of: "squash", "noFastForward", "rebase", "rebaseMerge".
+func (c *Client) MergePullRequest(repoID string, prID int, strategy, commitMsg string, deleteSourceBranch bool) error {
+	path := fmt.Sprintf("/git/repositories/%s/pullrequests/%d", repoID, prID)
+
+	body := CompletePullRequestRequest{
+		Status: "completed",
+		CompletionOptions: CompletionOptions{
+			MergeStrategy:      strategy,
+			DeleteSourceBranch: deleteSourceBranch,
+			MergeCommitMessage: commitMsg,
+		},
+	}
+
+	return c.patch(path, body, nil)
+}
+
+// AbandonPullRequest abandons a pull request.
+func (c *Client) AbandonPullRequest(repoID string, prID int) error {
+	path := fmt.Sprintf("/git/repositories/%s/pullrequests/%d", repoID, prID)
+	body := StatusUpdateRequest{Status: "abandoned"}
+	return c.patch(path, body, nil)
+}
+
+// ToggleDraft sets a pull request's draft state.
+func (c *Client) ToggleDraft(repoID string, prID int, isDraft bool) error {
+	path := fmt.Sprintf("/git/repositories/%s/pullrequests/%d", repoID, prID)
+	body := StatusUpdateRequest{IsDraft: &isDraft}
+	return c.patch(path, body, nil)
+}
+
 // CreateThread creates a new comment thread on a pull request.
-func (c *Client) CreateThread(repoID string, prID int, content string) error {
+// Pass a non-nil threadCtx to anchor the comment to a specific file/line.
+func (c *Client) CreateThread(repoID string, prID int, content string, threadCtx *ThreadContext) error {
 	path := fmt.Sprintf("/git/repositories/%s/pullrequests/%d/threads", repoID, prID)
 
 	body := CreateThreadRequest{
 		Comments: []CreateCommentRequest{
 			{Content: content, CommentType: "text"},
 		},
-		Status: "active",
+		Status:        "active",
+		ThreadContext: threadCtx,
 	}
 
 	return c.post(path, body, nil)

@@ -167,13 +167,19 @@ var (
 
 	// Confirm dialog
 	ConfirmPrompt = lipgloss.NewStyle().
-			Foreground(Warning).
+			Foreground(Primary).
 			Bold(true).
 			PaddingLeft(1)
 
 	ConfirmHint = lipgloss.NewStyle().
 			Foreground(Muted).
 			PaddingLeft(1)
+
+	// State picker selected row — solid background highlight
+	StatePickerSelected = lipgloss.NewStyle().
+				Foreground(White).
+				Background(Primary).
+				Bold(true)
 
 	// Success flash message
 	SuccessText = lipgloss.NewStyle().
@@ -194,6 +200,71 @@ var (
 	DiffMeta = lipgloss.NewStyle().
 			Foreground(Muted).
 			Bold(true)
+
+	// Diff gutter (line numbers) — muted, fixed-width, │ separator in Border color
+	DiffGutter = lipgloss.NewStyle().
+			Foreground(Muted)
+
+	DiffGutterSep = lipgloss.NewStyle().
+			Foreground(Border)
+
+	// Merge strategy selector
+	MergeStrategyActive = lipgloss.NewStyle().
+				Foreground(White).
+				Background(Primary).
+				Bold(true)
+
+	MergeStrategyInactive = lipgloss.NewStyle().
+				Foreground(Muted)
+
+	// Work item type icons (colored per type)
+	WorkItemBug = lipgloss.NewStyle().
+			Foreground(Danger).
+			Bold(true)
+
+	WorkItemUserStory = lipgloss.NewStyle().
+				Foreground(Info).
+				Bold(true)
+
+	WorkItemTask = lipgloss.NewStyle().
+			Foreground(Warning).
+			Bold(true)
+
+	WorkItemFeature = lipgloss.NewStyle().
+			Foreground(Primary).
+			Bold(true)
+
+	WorkItemEpic = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#9B59B6")).
+			Bold(true)
+
+	WorkItemDefault = lipgloss.NewStyle().
+			Foreground(Muted)
+
+	// Work item state badges
+	WorkItemStateActive = lipgloss.NewStyle().
+				Foreground(Info).
+				Bold(true)
+
+	WorkItemStateNew = lipgloss.NewStyle().
+				Foreground(Muted).
+				Bold(true)
+
+	WorkItemStateResolved = lipgloss.NewStyle().
+				Foreground(Warning).
+				Bold(true)
+
+	WorkItemStateClosed = lipgloss.NewStyle().
+				Foreground(Success).
+				Bold(true)
+
+	WorkItemStateDone = lipgloss.NewStyle().
+				Foreground(Success).
+				Bold(true)
+
+	WorkItemStateInProgress = lipgloss.NewStyle().
+				Foreground(Info).
+				Bold(true)
 )
 
 // StatusStyle returns the appropriate style for a PR status string.
@@ -210,6 +281,60 @@ func StatusStyle(status string, isDraft bool) lipgloss.Style {
 		return StatusAbandoned
 	default:
 		return lipgloss.NewStyle()
+	}
+}
+
+// WorkItemTypeStyle returns the colored style for the given work item type.
+func WorkItemTypeStyle(itemType string) lipgloss.Style {
+	switch itemType {
+	case "Bug":
+		return WorkItemBug
+	case "User Story":
+		return WorkItemUserStory
+	case "Task":
+		return WorkItemTask
+	case "Feature":
+		return WorkItemFeature
+	case "Epic":
+		return WorkItemEpic
+	default:
+		return WorkItemDefault
+	}
+}
+
+// WorkItemTypeIcon returns the display icon for the given work item type.
+func WorkItemTypeIcon(itemType string) string {
+	switch itemType {
+	case "Bug":
+		return "◉"
+	case "User Story":
+		return "◈"
+	case "Task":
+		return "◻"
+	case "Epic":
+		return "◆"
+	case "Feature":
+		return "◇"
+	default:
+		return "·"
+	}
+}
+
+// WorkItemStateStyle returns the badge style for the given work item state.
+func WorkItemStateStyle(state string) lipgloss.Style {
+	switch state {
+	case "Active", "In Progress":
+		return WorkItemStateActive
+	case "New", "To Do":
+		return WorkItemStateNew
+	case "Resolved":
+		return WorkItemStateResolved
+	case "Closed":
+		return WorkItemStateClosed
+	case "Done":
+		return WorkItemStateDone
+	default:
+		return WorkItemDefault
 	}
 }
 

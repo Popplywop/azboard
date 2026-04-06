@@ -2,6 +2,8 @@ package prs
 
 import (
 	"fmt"
+	"os/exec"
+	"runtime"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -22,9 +24,13 @@ import (
 type detailMode int
 
 const (
-	modeNormal  detailMode = iota
-	modeCompose            // textarea focused for writing a comment
-	modeConfirm            // vote confirmation prompt
+	modeNormal      detailMode = iota
+	modeCompose                // textarea focused for writing a comment
+	modeConfirm                // vote confirmation prompt
+	modeMerge                  // merge dialog
+	modeAbandon                // abandon confirm
+	modeDraftToggle            // draft/ready toggle confirm
+	modeDiffComment            // inline diff comment compose
 )
 
 type detailPane int
@@ -87,10 +93,19 @@ type FilesLoadedMsg struct {
 	BaseCommit string
 	HeadCommit string
 	Changes    []api.IterationChange
+	Iterations []api.Iteration
 }
 
 type FilesErrorMsg struct {
 	Err error
+}
+
+// FilesChangesLoadedMsg is used when only the changed files list is refreshed
+// (e.g. after switching iteration) without reloading the full iteration list.
+type FilesChangesLoadedMsg struct {
+	BaseCommit string
+	HeadCommit string
+	Changes    []api.IterationChange
 }
 
 type DiffLoadedMsg struct {
@@ -102,12 +117,42 @@ type DiffErrorMsg struct {
 	Err error
 }
 
+// PR lifecycle result messages
+type PRMergedMsg struct {
+	PRID int
+}
+
+type PRMergeErrorMsg struct {
+	Err error
+}
+
+type PRAbandonedMsg struct {
+	PRID int
+}
+
+type PRAbandonErrorMsg struct {
+	Err error
+}
+
+type PRDraftToggledMsg struct {
+	PRID    int
+	IsDraft bool
+}
+
+type PRDraftToggleErrorMsg struct {
+	Err error
+}
+
 // --- DetailModel ---
 
 type DetailModel struct {
 	client  *api.Client
 	pr      api.PullRequest
 	threads []api.Thread
+
+	// Context for building browser URLs
+	orgURL  string
+	project string
 
 	// UI components
 	viewport viewport.Model
@@ -141,9 +186,24 @@ type DetailModel struct {
 
 	// Thread positions for scrolling (line number where each thread starts)
 	threadPositions []int
+
+	// Merge dialog state
+	mergeDeleteBranch bool
+	mergeOptions      []mergeOption
+	mergeOptionIndex  int
+
+	// Inline diff comment
+	pendingDiffFile      string
+	pendingDiffLine      int
+	defaultMergeStrategy string
 }
 
-func NewDetailModel(client *api.Client, pr api.PullRequest) DetailModel {
+type mergeOption struct {
+	Label    string
+	APIValue string
+}
+
+func NewDetailModel(client *api.Client, pr api.PullRequest, defaultMergeStrategy string) DetailModel {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 	s.Style = theme.Spinner
@@ -157,17 +217,57 @@ func NewDetailModel(client *api.Client, pr api.PullRequest) DetailModel {
 	ta.SetStyles(styles)
 	ta.CharLimit = 4000
 
+	options := []mergeOption{
+		{Label: "Squash merge", APIValue: "squash"},
+		{Label: "Merge commit", APIValue: "noFastForward"},
+		{Label: "Rebase", APIValue: "rebase"},
+		{Label: "Semi-linear (rebase merge)", APIValue: "rebaseMerge"},
+	}
+
+	// Find default strategy index
+	optIdx := 0
+	for i, o := range options {
+		if o.APIValue == mergeStrategyAPIValue(defaultMergeStrategy) {
+			optIdx = i
+			break
+		}
+	}
+
 	return DetailModel{
-		client:        client,
-		pr:            pr,
-		spinner:       s,
-		textarea:      ta,
-		loading:       true,
-		focusedThread: -1,
-		replyThreadID: -1,
-		pane:          paneOverview,
-		files:         NewFilesModel(),
-		diff:          NewDiffModel(),
+		client:               client,
+		pr:                   pr,
+		spinner:              s,
+		textarea:             ta,
+		loading:              true,
+		focusedThread:        -1,
+		replyThreadID:        -1,
+		pane:                 paneOverview,
+		files:                NewFilesModel(),
+		diff:                 NewDiffModel(),
+		mergeOptions:         options,
+		mergeOptionIndex:     optIdx,
+		mergeDeleteBranch:    true,
+		defaultMergeStrategy: defaultMergeStrategy,
+	}
+}
+
+// SetContext sets the orgURL and project fields used to build browser URLs.
+func (m *DetailModel) SetContext(orgURL, project string) {
+	m.orgURL = orgURL
+	m.project = project
+}
+
+// mergeStrategyAPIValue converts a config string to the ADO API value.
+func mergeStrategyAPIValue(s string) string {
+	switch s {
+	case "merge":
+		return "noFastForward"
+	case "rebase":
+		return "rebase"
+	case "semilinear":
+		return "rebaseMerge"
+	default:
+		return "squash"
 	}
 }
 
@@ -233,6 +333,24 @@ func (m DetailModel) fetchFiles() tea.Cmd {
 			BaseCommit: latest.TargetRefCommit.CommitID,
 			HeadCommit: latest.SourceRefCommit.CommitID,
 			Changes:    changes,
+			Iterations: iterations,
+		}
+	}
+}
+
+// fetchChangesForIteration re-fetches changed files for the given iteration
+// without re-fetching the full iteration list.
+func (m DetailModel) fetchChangesForIteration(iter api.Iteration) tea.Cmd {
+	pr := m.pr
+	return func() tea.Msg {
+		changes, err := m.client.GetPullRequestIterationChanges(pr.Repository.ID, pr.PullRequestID, iter.ID)
+		if err != nil {
+			return FilesErrorMsg{Err: err}
+		}
+		return FilesChangesLoadedMsg{
+			BaseCommit: iter.TargetRefCommit.CommitID,
+			HeadCommit: iter.SourceRefCommit.CommitID,
+			Changes:    changes,
 		}
 	}
 }
@@ -270,7 +388,7 @@ func (m DetailModel) submitComment() tea.Cmd {
 	return func() tea.Msg {
 		var err error
 		if threadID == -1 {
-			err = m.client.CreateThread(pr.Repository.ID, pr.PullRequestID, content)
+			err = m.client.CreateThread(pr.Repository.ID, pr.PullRequestID, content, nil)
 		} else {
 			err = m.client.ReplyToThread(pr.Repository.ID, pr.PullRequestID, threadID, content)
 		}
@@ -296,7 +414,59 @@ func (m DetailModel) toggleThreadStatus(thread api.Thread) tea.Cmd {
 	}
 }
 
-func (m DetailModel) setFlash(msg string, style lipgloss.Style) (DetailModel, tea.Cmd) {
+func (m DetailModel) submitMerge() tea.Cmd {
+	pr := m.pr
+	strategy := m.mergeOptions[m.mergeOptionIndex].APIValue
+	deleteBranch := m.mergeDeleteBranch
+	return func() tea.Msg {
+		err := m.client.MergePullRequest(pr.Repository.ID, pr.PullRequestID, strategy, "", deleteBranch)
+		if err != nil {
+			return PRMergeErrorMsg{Err: err}
+		}
+		return PRMergedMsg{PRID: pr.PullRequestID}
+	}
+}
+
+func (m DetailModel) submitAbandon() tea.Cmd {
+	pr := m.pr
+	return func() tea.Msg {
+		err := m.client.AbandonPullRequest(pr.Repository.ID, pr.PullRequestID)
+		if err != nil {
+			return PRAbandonErrorMsg{Err: err}
+		}
+		return PRAbandonedMsg{PRID: pr.PullRequestID}
+	}
+}
+
+func (m DetailModel) submitDraftToggle() tea.Cmd {
+	pr := m.pr
+	newDraft := !pr.IsDraft
+	return func() tea.Msg {
+		err := m.client.ToggleDraft(pr.Repository.ID, pr.PullRequestID, newDraft)
+		if err != nil {
+			return PRDraftToggleErrorMsg{Err: err}
+		}
+		return PRDraftToggledMsg{PRID: pr.PullRequestID, IsDraft: newDraft}
+	}
+}
+
+func (m DetailModel) openInBrowser() tea.Cmd {
+	pr := m.pr
+	orgURL := m.orgURL
+	project := m.project
+	return func() tea.Msg {
+		url := fmt.Sprintf("%s/%s/_git/%s/pullrequest/%d",
+			strings.TrimRight(orgURL, "/"),
+			project,
+			pr.Repository.Name,
+			pr.PullRequestID,
+		)
+		openBrowserURL(url)
+		return nil
+	}
+}
+
+func (m DetailModel) SetFlash(msg string, style lipgloss.Style) (DetailModel, tea.Cmd) {
 	m.flashMsg = msg
 	m.flashStyle = style
 	return m, tea.Tick(3*time.Second, func(time.Time) tea.Msg {
@@ -358,6 +528,15 @@ func (m DetailModel) Update(msg tea.Msg) (DetailModel, tea.Cmd) {
 		m.baseCommitID = msg.BaseCommit
 		m.headCommitID = msg.HeadCommit
 		m.files.SetChanges(msg.Changes)
+		m.files.SetIterations(msg.Iterations)
+
+	case FilesChangesLoadedMsg:
+		m.filesLoading = false
+		m.filesLoaded = true
+		m.filesErr = nil
+		m.baseCommitID = msg.BaseCommit
+		m.headCommitID = msg.HeadCommit
+		m.files.SetChanges(msg.Changes)
 
 	case FilesErrorMsg:
 		m.filesLoading = false
@@ -374,23 +553,34 @@ func (m DetailModel) Update(msg tea.Msg) (DetailModel, tea.Cmd) {
 		m.diffLoading = false
 		m.diffErr = msg.Err
 
+	case IterationChangedMsg:
+		// User switched iteration — re-fetch changes and reset diff
+		m.filesLoading = true
+		m.filesErr = nil
+		m.baseCommitID = msg.Iteration.TargetRefCommit.CommitID
+		m.headCommitID = msg.Iteration.SourceRefCommit.CommitID
+		m.pane = paneFiles
+		return m, m.fetchChangesForIteration(msg.Iteration)
+
 	case VoteSubmittedMsg:
 		m.mode = modeNormal
 		var flashCmd tea.Cmd
-		m, flashCmd = m.setFlash("Vote submitted!", theme.SuccessText)
+		m, flashCmd = m.SetFlash("Vote submitted!", theme.SuccessText)
 		cmds = append(cmds, flashCmd, m.fetchPR(), m.fetchThreads())
 
 	case VoteErrorMsg:
 		m.mode = modeNormal
 		var flashCmd tea.Cmd
-		m, flashCmd = m.setFlash(fmt.Sprintf("Vote failed: %s", msg.Err), theme.ErrorText)
+		m, flashCmd = m.SetFlash(fmt.Sprintf("Vote failed: %s", msg.Err), theme.ErrorText)
 		cmds = append(cmds, flashCmd)
 
 	case CommentPostedMsg:
 		m.mode = modeNormal
 		m.textarea.Reset()
+		m.pendingDiffFile = ""
+		m.pendingDiffLine = 0
 		var flashCmd tea.Cmd
-		m, flashCmd = m.setFlash("Comment posted!", theme.SuccessText)
+		m, flashCmd = m.SetFlash("Comment posted!", theme.SuccessText)
 		cmds = append(cmds, flashCmd, m.fetchThreads())
 		m.resizeViewport()
 
@@ -398,18 +588,55 @@ func (m DetailModel) Update(msg tea.Msg) (DetailModel, tea.Cmd) {
 		m.mode = modeNormal
 		m.textarea.Reset()
 		var flashCmd tea.Cmd
-		m, flashCmd = m.setFlash(fmt.Sprintf("Comment failed: %s", msg.Err), theme.ErrorText)
+		m, flashCmd = m.SetFlash(fmt.Sprintf("Comment failed: %s", msg.Err), theme.ErrorText)
 		cmds = append(cmds, flashCmd)
 		m.resizeViewport()
 
 	case ThreadStatusUpdatedMsg:
 		var flashCmd tea.Cmd
-		m, flashCmd = m.setFlash("Thread status updated!", theme.SuccessText)
+		m, flashCmd = m.SetFlash("Thread status updated!", theme.SuccessText)
 		cmds = append(cmds, flashCmd, m.fetchThreads())
 
 	case ThreadStatusErrorMsg:
 		var flashCmd tea.Cmd
-		m, flashCmd = m.setFlash(fmt.Sprintf("Status update failed: %s", msg.Err), theme.ErrorText)
+		m, flashCmd = m.SetFlash(fmt.Sprintf("Status update failed: %s", msg.Err), theme.ErrorText)
+		cmds = append(cmds, flashCmd)
+
+	case PRMergedMsg:
+		var flashCmd tea.Cmd
+		m, flashCmd = m.SetFlash("PR merged!", theme.SuccessText)
+		cmds = append(cmds, flashCmd, func() tea.Msg { return BackToListMsg{} })
+
+	case PRMergeErrorMsg:
+		var flashCmd tea.Cmd
+		m, flashCmd = m.SetFlash(fmt.Sprintf("Merge failed: %s", msg.Err), theme.ErrorText)
+		cmds = append(cmds, flashCmd)
+
+	case PRAbandonedMsg:
+		var flashCmd tea.Cmd
+		m, flashCmd = m.SetFlash("PR abandoned.", theme.SuccessText)
+		cmds = append(cmds, flashCmd, func() tea.Msg { return BackToListMsg{} })
+
+	case PRAbandonErrorMsg:
+		var flashCmd tea.Cmd
+		m, flashCmd = m.SetFlash(fmt.Sprintf("Abandon failed: %s", msg.Err), theme.ErrorText)
+		cmds = append(cmds, flashCmd)
+
+	case PRDraftToggledMsg:
+		m.pr.IsDraft = msg.IsDraft
+		var label string
+		if msg.IsDraft {
+			label = "Converted to draft."
+		} else {
+			label = "Marked as ready for review."
+		}
+		var flashCmd tea.Cmd
+		m, flashCmd = m.SetFlash(label, theme.SuccessText)
+		cmds = append(cmds, flashCmd, m.fetchPR())
+
+	case PRDraftToggleErrorMsg:
+		var flashCmd tea.Cmd
+		m, flashCmd = m.SetFlash(fmt.Sprintf("Draft toggle failed: %s", msg.Err), theme.ErrorText)
 		cmds = append(cmds, flashCmd)
 
 	case flashClearMsg:
@@ -439,11 +666,31 @@ func (m DetailModel) Update(msg tea.Msg) (DetailModel, tea.Cmd) {
 			if cmd != nil {
 				return m, cmd
 			}
+		case modeMerge:
+			cmd := m.handleMergeKeys(msg)
+			if cmd != nil {
+				return m, cmd
+			}
+		case modeAbandon:
+			cmd := m.handleAbandonKeys(msg)
+			if cmd != nil {
+				return m, cmd
+			}
+		case modeDraftToggle:
+			cmd := m.handleDraftToggleKeys(msg)
+			if cmd != nil {
+				return m, cmd
+			}
+		case modeDiffComment:
+			cmd := m.handleDiffCommentKeys(msg)
+			if cmd != nil {
+				return m, cmd
+			}
 		}
 	}
 
 	// Update sub-components
-	if m.mode == modeCompose {
+	if m.mode == modeCompose || m.mode == modeDiffComment {
 		var cmd tea.Cmd
 		m.textarea, cmd = m.textarea.Update(msg)
 		cmds = append(cmds, cmd)
@@ -495,7 +742,25 @@ func (m *DetailModel) handleNormalKeys(msg tea.KeyPressMsg) tea.Cmd {
 	if m.pane == paneDiff {
 		switch msg.String() {
 		case "esc":
+			if m.diff.InCursorMode() {
+				// esc in cursor mode exits cursor mode, handled by DiffModel.Update
+				return nil
+			}
 			m.pane = paneFiles
+			return nil
+		case "c":
+			if m.diff.InCursorMode() {
+				lineNo := m.diff.CursorNewFileLine()
+				if lineNo > 0 {
+					m.pendingDiffFile = m.diff.Path()
+					m.pendingDiffLine = lineNo
+					m.mode = modeDiffComment
+					m.textarea.Reset()
+					cmd := m.textarea.Focus()
+					m.resizeViewport()
+					return cmd
+				}
+			}
 			return nil
 		default:
 			return nil
@@ -576,6 +841,27 @@ func (m *DetailModel) handleNormalKeys(msg tea.KeyPressMsg) tea.Cmd {
 			return m.fetchFiles()
 		}
 		return nil
+
+	case key.Matches(msg, key.NewBinding(key.WithKeys("m"))):
+		if m.pr.Status == "active" {
+			m.mode = modeMerge
+		}
+		return nil
+
+	case key.Matches(msg, key.NewBinding(key.WithKeys("X"))):
+		if m.pr.Status == "active" {
+			m.mode = modeAbandon
+		}
+		return nil
+
+	case key.Matches(msg, key.NewBinding(key.WithKeys("D"))):
+		if m.pr.Status == "active" {
+			m.mode = modeDraftToggle
+		}
+		return nil
+
+	case key.Matches(msg, key.NewBinding(key.WithKeys("o"))):
+		return m.openInBrowser()
 	}
 
 	return nil
@@ -625,6 +911,94 @@ func (m *DetailModel) handleConfirmKeys(msg tea.KeyPressMsg) tea.Cmd {
 	return nil
 }
 
+func (m *DetailModel) handleMergeKeys(msg tea.KeyPressMsg) tea.Cmd {
+	switch msg.String() {
+	case "esc":
+		m.mode = modeNormal
+		return nil
+	case "up", "k":
+		if m.mergeOptionIndex > 0 {
+			m.mergeOptionIndex--
+		}
+		return nil
+	case "down", "j":
+		if m.mergeOptionIndex < len(m.mergeOptions)-1 {
+			m.mergeOptionIndex++
+		}
+		return nil
+	case "d", "D":
+		m.mergeDeleteBranch = !m.mergeDeleteBranch
+		return nil
+	case "enter", "ctrl+s":
+		m.mode = modeNormal
+		return m.submitMerge()
+	}
+	return nil
+}
+
+func (m *DetailModel) handleAbandonKeys(msg tea.KeyPressMsg) tea.Cmd {
+	switch msg.String() {
+	case "y", "Y":
+		m.mode = modeNormal
+		return m.submitAbandon()
+	case "n", "N", "esc":
+		m.mode = modeNormal
+		return nil
+	}
+	return nil
+}
+
+func (m *DetailModel) handleDraftToggleKeys(msg tea.KeyPressMsg) tea.Cmd {
+	switch msg.String() {
+	case "y", "Y":
+		m.mode = modeNormal
+		return m.submitDraftToggle()
+	case "n", "N", "esc":
+		m.mode = modeNormal
+		return nil
+	}
+	return nil
+}
+
+func (m *DetailModel) handleDiffCommentKeys(msg tea.KeyPressMsg) tea.Cmd {
+	switch msg.String() {
+	case "esc":
+		m.mode = modeNormal
+		m.textarea.Reset()
+		m.textarea.Blur()
+		m.pendingDiffFile = ""
+		m.pendingDiffLine = 0
+		m.resizeViewport()
+		return nil
+	case "ctrl+s":
+		content := strings.TrimSpace(m.textarea.Value())
+		if content == "" {
+			return nil
+		}
+		m.textarea.Blur()
+		return m.submitDiffComment(content)
+	}
+	return nil
+}
+
+func (m DetailModel) submitDiffComment(content string) tea.Cmd {
+	pr := m.pr
+	filePath := m.pendingDiffFile
+	lineNo := m.pendingDiffLine
+	return func() tea.Msg {
+		ctx := &api.ThreadContext{
+			FilePath:       filePath,
+			RightFileStart: &api.LineRange{Line: lineNo, Offset: 1},
+			RightFileEnd:   &api.LineRange{Line: lineNo, Offset: 1},
+		}
+		err := m.client.CreateThread(pr.Repository.ID, pr.PullRequestID, content, ctx)
+		if err != nil {
+			return CommentErrorMsg{Err: err}
+		}
+		return CommentPostedMsg{}
+	}
+}
+
 func (m *DetailModel) nextThread() {
 	filtered := m.filterThreads()
 	if len(filtered) == 0 {
@@ -663,10 +1037,12 @@ func (m *DetailModel) resizeViewport() {
 	footerHeight := 2
 
 	composeHeight := 0
-	if m.mode == modeCompose {
+	if m.mode == modeCompose || m.mode == modeDiffComment {
 		composeHeight = 9 // label + textarea + hint
-	} else if m.mode == modeConfirm {
+	} else if m.mode == modeConfirm || m.mode == modeAbandon || m.mode == modeDraftToggle {
 		composeHeight = 2
+	} else if m.mode == modeMerge {
+		composeHeight = len(m.mergeOptions) + 4 // options + delete toggle + hint
 	}
 
 	vpHeight := m.height - headerHeight - footerHeight - composeHeight
@@ -916,11 +1292,63 @@ func (m DetailModel) View() string {
 		sections = append(sections, theme.ComposeHint.Render("  ctrl+s submit · esc cancel"))
 	}
 
-	// Confirm prompt
+	// Confirm prompt (vote)
 	if m.mode == modeConfirm {
 		prompt := fmt.Sprintf("  %s this PR? (y/n)", m.confirmAction)
 		sections = append(sections, theme.ConfirmPrompt.Render(prompt))
 		sections = append(sections, theme.ConfirmHint.Render("  y confirm · n/esc cancel"))
+	}
+
+	// Merge dialog
+	if m.mode == modeMerge {
+		var mb strings.Builder
+		mb.WriteString(theme.ConfirmPrompt.Render("  Merge strategy:") + "\n")
+		for i, opt := range m.mergeOptions {
+			cursor := "  "
+			if i == m.mergeOptionIndex {
+				cursor = "> "
+			}
+			row := fmt.Sprintf("  %s%s", cursor, opt.Label)
+			if i == m.mergeOptionIndex {
+				mb.WriteString(theme.MergeStrategyActive.Render(row))
+			} else {
+				mb.WriteString(theme.MergeStrategyInactive.Render(row))
+			}
+			mb.WriteString("\n")
+		}
+		deleteStr := "n"
+		if m.mergeDeleteBranch {
+			deleteStr = "Y"
+		}
+		mb.WriteString(theme.ConfirmPrompt.Render(fmt.Sprintf("  Delete source branch? [%s]  (d to toggle)", deleteStr)) + "\n")
+		mb.WriteString(theme.ConfirmHint.Render("  enter/ctrl+s confirm · esc cancel"))
+		sections = append(sections, mb.String())
+	}
+
+	// Abandon confirm
+	if m.mode == modeAbandon {
+		sections = append(sections, theme.ConfirmPrompt.Render("  Abandon this PR? [y/N]"))
+		sections = append(sections, theme.ConfirmHint.Render("  y confirm · n/esc cancel"))
+	}
+
+	// Draft toggle confirm
+	if m.mode == modeDraftToggle {
+		var prompt string
+		if m.pr.IsDraft {
+			prompt = "  Mark as ready for review? [y/N]"
+		} else {
+			prompt = "  Convert to draft? [y/N]"
+		}
+		sections = append(sections, theme.ConfirmPrompt.Render(prompt))
+		sections = append(sections, theme.ConfirmHint.Render("  y confirm · n/esc cancel"))
+	}
+
+	// Inline diff comment compose
+	if m.mode == modeDiffComment {
+		label := fmt.Sprintf("  Comment on %s line %d:", m.pendingDiffFile, m.pendingDiffLine)
+		sections = append(sections, theme.ComposeLabel.Render(label))
+		sections = append(sections, m.textarea.View())
+		sections = append(sections, theme.ComposeHint.Render("  ctrl+s submit · esc cancel"))
 	}
 
 	return strings.Join(sections, "\n")
@@ -999,4 +1427,16 @@ func wrapLine(line string, width int) string {
 	}
 
 	return result.String()
+}
+
+// openBrowserURL opens a URL in the default system browser.
+func openBrowserURL(url string) {
+	var cmd string
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = "open"
+	default:
+		cmd = "xdg-open"
+	}
+	_ = exec.Command(cmd, url).Start()
 }

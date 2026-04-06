@@ -2,7 +2,6 @@ package config
 
 import (
 	"bufio"
-	"flag"
 	"fmt"
 	"net/url"
 	"os"
@@ -18,26 +17,25 @@ const (
 )
 
 type Config struct {
-	AuthMethod AuthMethod
-	OrgURL     string // Full org URL, e.g. https://dev.azure.com/pdidev or https://pdidev.visualstudio.com
-	Org        string // Extracted org name, e.g. pdidev
-	Project    string
-	PAT        string // Only set when AuthMethod == "pat"
+	AuthMethod           AuthMethod
+	OrgURL               string // Full org URL, e.g. https://dev.azure.com/pdidev or https://pdidev.visualstudio.com
+	Org                  string // Extracted org name, e.g. pdidev
+	Project              string
+	PAT                  string   // Only set when AuthMethod == "pat"
+	Repos                []string // AZBOARD_REPOS, comma-separated repo names
+	WorkItemTypes        []string // AZBOARD_WORK_ITEM_TYPES, comma-separated
+	DefaultMergeStrategy string   // AZBOARD_DEFAULT_MERGE_STRATEGY (default: "squash")
+	AreaPath             string   // AZBOARD_AREA_PATH, e.g. "PDI\Wholesale" — filters work items by area
 }
 
+// Load reads configuration exclusively from ~/.config/azboard/config.env.
 func Load() (*Config, error) {
-	org := flag.String("org", "", "Azure DevOps organization name (overrides config)")
-	project := flag.String("project", "", "Azure DevOps project name (overrides config)")
-	configPath := flag.String("config", "", "Path to config file (default: ~/.config/azboard/config.env)")
-	flag.Parse()
-
-	// Load config file values first (lowest priority)
-	fileVals := loadConfigFile(*configPath)
+	vals := loadConfigFile("")
 
 	cfg := &Config{}
 
-	// Auth method: flag/env > config file > default (azcli)
-	authStr := resolve("AZURE_DEVOPS_AUTH_METHOD", "", fileVals)
+	// Auth method
+	authStr := vals["AZURE_DEVOPS_AUTH_METHOD"]
 	switch strings.ToLower(authStr) {
 	case "pat":
 		cfg.AuthMethod = AuthPAT
@@ -48,63 +46,73 @@ func Load() (*Config, error) {
 	}
 
 	// Org URL — used to derive org name and base URL
-	orgURL := resolve("AZURE_DEVOPS_ORG_URL", "", fileVals)
-
-	// Org name — can come from URL, env, or flag
-	orgName := resolve("AZDO_ORG", *org, fileVals)
-
-	// If we have an org URL, parse org and project from it
+	orgURL := vals["AZURE_DEVOPS_ORG_URL"]
 	if orgURL != "" {
 		parsedOrg, parsedProject := parseOrgURL(orgURL)
-		if parsedOrg != "" && orgName == "" {
-			orgName = parsedOrg
-		}
 		cfg.OrgURL = orgURL
-		// If project was embedded in the URL (e.g. https://pdidev.visualstudio.com/PDI)
+		if parsedOrg != "" {
+			cfg.Org = parsedOrg
+		}
 		if parsedProject != "" {
 			cfg.Project = parsedProject
 		}
 	}
 
-	cfg.Org = orgName
-
-	// Project: flag/env > URL-parsed > config file
-	projectVal := resolve("AZURE_DEVOPS_DEFAULT_PROJECT", *project, fileVals)
-	if projectVal == "" {
-		projectVal = resolve("AZDO_PROJECT", "", fileVals)
-	}
-	if projectVal != "" {
-		cfg.Project = projectVal
+	// Project can also be set explicitly (overrides URL-parsed value)
+	if p := vals["AZURE_DEVOPS_DEFAULT_PROJECT"]; p != "" {
+		cfg.Project = p
 	}
 
 	// PAT
 	if cfg.AuthMethod == AuthPAT {
-		cfg.PAT = resolve("AZURE_DEVOPS_PAT", "", fileVals)
+		cfg.PAT = vals["AZURE_DEVOPS_PAT"]
 		if cfg.PAT == "" {
-			return nil, fmt.Errorf("PAT auth requires AZURE_DEVOPS_PAT in config file or environment")
+			return nil, fmt.Errorf("PAT auth requires AZURE_DEVOPS_PAT in %s", ConfigFilePath())
 		}
 	}
 
+	// Repos: AZBOARD_REPOS — split on comma, trim whitespace
+	if reposStr := vals["AZBOARD_REPOS"]; reposStr != "" {
+		for _, r := range strings.Split(reposStr, ",") {
+			r = strings.TrimSpace(r)
+			if r != "" {
+				cfg.Repos = append(cfg.Repos, r)
+			}
+		}
+	}
+
+	// WorkItemTypes: AZBOARD_WORK_ITEM_TYPES
+	if wiTypesStr := vals["AZBOARD_WORK_ITEM_TYPES"]; wiTypesStr != "" {
+		for _, t := range strings.Split(wiTypesStr, ",") {
+			t = strings.TrimSpace(t)
+			if t != "" {
+				cfg.WorkItemTypes = append(cfg.WorkItemTypes, t)
+			}
+		}
+	} else {
+		cfg.WorkItemTypes = []string{"User Story", "Bug", "Task", "Feature", "Epic"}
+	}
+
+	// DefaultMergeStrategy: AZBOARD_DEFAULT_MERGE_STRATEGY
+	switch vals["AZBOARD_DEFAULT_MERGE_STRATEGY"] {
+	case "squash", "merge", "rebase", "semilinear":
+		cfg.DefaultMergeStrategy = vals["AZBOARD_DEFAULT_MERGE_STRATEGY"]
+	default:
+		cfg.DefaultMergeStrategy = "squash"
+	}
+
+	// AreaPath: AZBOARD_AREA_PATH — optional, filters work items by area
+	cfg.AreaPath = vals["AZBOARD_AREA_PATH"]
+
 	// Validate
 	if cfg.Org == "" {
-		return nil, fmt.Errorf("organization is required: set AZURE_DEVOPS_ORG_URL or AZDO_ORG in config/env, or use --org flag")
+		return nil, fmt.Errorf("organization is required: set AZURE_DEVOPS_ORG_URL in %s", ConfigFilePath())
 	}
 	if cfg.Project == "" {
-		return nil, fmt.Errorf("project is required: set AZURE_DEVOPS_DEFAULT_PROJECT or AZDO_PROJECT in config/env, or use --project flag")
+		return nil, fmt.Errorf("project is required: set AZURE_DEVOPS_DEFAULT_PROJECT in %s", ConfigFilePath())
 	}
 
 	return cfg, nil
-}
-
-// resolve returns the first non-empty value from: flag, env var, config file.
-func resolve(envKey, flagVal string, fileVals map[string]string) string {
-	if flagVal != "" {
-		return flagVal
-	}
-	if v := os.Getenv(envKey); v != "" {
-		return v
-	}
-	return fileVals[envKey]
 }
 
 // parseOrgURL extracts the org name and optional project from an Azure DevOps URL.
@@ -123,7 +131,6 @@ func parseOrgURL(rawURL string) (org, project string) {
 	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
 
 	if strings.HasSuffix(u.Host, ".visualstudio.com") {
-		// https://orgname.visualstudio.com/project
 		org = strings.TrimSuffix(u.Host, ".visualstudio.com")
 		if len(parts) > 0 && parts[0] != "" {
 			project = parts[0]
@@ -132,7 +139,6 @@ func parseOrgURL(rawURL string) (org, project string) {
 	}
 
 	if u.Host == "dev.azure.com" {
-		// https://dev.azure.com/orgname/project
 		if len(parts) > 0 {
 			org = parts[0]
 		}
@@ -145,8 +151,7 @@ func parseOrgURL(rawURL string) (org, project string) {
 	return "", ""
 }
 
-// loadConfigFile reads a key=value config file.
-// Looks in: provided path > ~/.config/azboard/config.env
+// loadConfigFile reads a key=value config file from ~/.config/azboard/config.env.
 func loadConfigFile(path string) map[string]string {
 	vals := make(map[string]string)
 
@@ -160,7 +165,7 @@ func loadConfigFile(path string) map[string]string {
 
 	f, err := os.Open(path)
 	if err != nil {
-		return vals // File doesn't exist, that's fine
+		return vals
 	}
 	defer f.Close()
 
@@ -168,7 +173,6 @@ func loadConfigFile(path string) map[string]string {
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 
-		// Skip empty lines and comments
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
@@ -180,8 +184,6 @@ func loadConfigFile(path string) map[string]string {
 
 		key = strings.TrimSpace(key)
 		value = strings.TrimSpace(value)
-
-		// Strip surrounding quotes
 		value = strings.Trim(value, `"'`)
 
 		vals[key] = value
@@ -190,7 +192,7 @@ func loadConfigFile(path string) map[string]string {
 	return vals
 }
 
-// ConfigFilePath returns the default config file path for display purposes.
+// ConfigFilePath returns the default config file path.
 func ConfigFilePath() string {
 	home, err := os.UserHomeDir()
 	if err != nil {

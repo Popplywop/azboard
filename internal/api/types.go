@@ -114,7 +114,15 @@ type Thread struct {
 
 // ThreadContext contains file path info for inline comments.
 type ThreadContext struct {
-	FilePath string `json:"filePath"`
+	FilePath       string     `json:"filePath"`
+	RightFileStart *LineRange `json:"rightFileStart,omitempty"`
+	RightFileEnd   *LineRange `json:"rightFileEnd,omitempty"`
+}
+
+// LineRange identifies a line/offset position in a file.
+type LineRange struct {
+	Line   int `json:"line"`
+	Offset int `json:"offset"`
 }
 
 // Comment represents a single comment within a thread.
@@ -129,10 +137,39 @@ type Comment struct {
 
 // --- Request body types ---
 
+// CreatePullRequestRequest is the body for creating a new pull request.
+type CreatePullRequestRequest struct {
+	Title         string `json:"title"`
+	Description   string `json:"description,omitempty"`
+	SourceRefName string `json:"sourceRefName"` // "refs/heads/branch-name"
+	TargetRefName string `json:"targetRefName"`
+	IsDraft       bool   `json:"isDraft"`
+}
+
+// CompletePullRequestRequest is the body for completing (merging) a PR.
+type CompletePullRequestRequest struct {
+	Status            string            `json:"status"`
+	CompletionOptions CompletionOptions `json:"completionOptions"`
+}
+
+// CompletionOptions specifies how a PR should be completed.
+type CompletionOptions struct {
+	MergeStrategy      string `json:"mergeStrategy"`
+	DeleteSourceBranch bool   `json:"deleteSourceBranch"`
+	MergeCommitMessage string `json:"mergeCommitMessage,omitempty"`
+}
+
+// StatusUpdateRequest is the body for updating a PR's status (abandon, etc.).
+type StatusUpdateRequest struct {
+	Status  string `json:"status"`
+	IsDraft *bool  `json:"isDraft,omitempty"`
+}
+
 // CreateThreadRequest is the body for creating a new comment thread.
 type CreateThreadRequest struct {
-	Comments []CreateCommentRequest `json:"comments"`
-	Status   string                 `json:"status"`
+	Comments      []CreateCommentRequest `json:"comments"`
+	Status        string                 `json:"status"`
+	ThreadContext *ThreadContext         `json:"threadContext,omitempty"`
 }
 
 // CreateCommentRequest is the body for creating a comment (in a new thread or reply).
@@ -157,6 +194,16 @@ type ConnectionData struct {
 		ID          string `json:"id"`
 		DisplayName string `json:"providerDisplayName"`
 	} `json:"authenticatedUser"`
+}
+
+// GitBranch represents a git branch (ref) in Azure DevOps.
+type GitBranch struct {
+	Name string `json:"name"` // full ref name e.g. "refs/heads/main"
+}
+
+// ShortName strips the "refs/heads/" prefix.
+func (b GitBranch) ShortName() string {
+	return stripRefsPrefix(b.Name)
 }
 
 // CommitRef identifies a git commit in Azure DevOps.
@@ -184,4 +231,91 @@ type IterationChange struct {
 	ChangeType   string     `json:"changeType"`
 	Item         ChangeItem `json:"item"`
 	OriginalPath string     `json:"originalPath,omitempty"`
+}
+
+// --- Work item types ---
+
+// WorkItem represents an Azure DevOps work item.
+type WorkItem struct {
+	ID     int            `json:"id"`
+	Fields WorkItemFields `json:"fields"`
+	URL    string         `json:"url"`
+}
+
+// WorkItemFields holds the system fields of a work item.
+type WorkItemFields struct {
+	Title        string      `json:"System.Title"`
+	State        string      `json:"System.State"`
+	WorkItemType string      `json:"System.WorkItemType"`
+	AssignedTo   IdentityRef `json:"System.AssignedTo"`
+	Description  string      `json:"System.Description"`
+	CreatedDate  time.Time   `json:"System.CreatedDate"`
+	ChangedDate  time.Time   `json:"System.ChangedDate"`
+	AreaPath     string      `json:"System.AreaPath"`
+	TeamProject  string      `json:"System.TeamProject"`
+}
+
+// WIQLRequest is the body for a WIQL query.
+type WIQLRequest struct {
+	Query string `json:"query"`
+}
+
+// WIQLResult is the response from a WIQL query.
+type WIQLResult struct {
+	WorkItems []WIQLRef `json:"workItems"`
+}
+
+// WIQLRef is a reference to a work item returned from WIQL.
+type WIQLRef struct {
+	ID  int    `json:"id"`
+	URL string `json:"url"`
+}
+
+// WorkItemPatchOp is a single operation in a JSON Patch document for work items.
+type WorkItemPatchOp struct {
+	Op    string `json:"op"`
+	Path  string `json:"path"`
+	Value any    `json:"value"`
+}
+
+// WorkItemComment is a comment on a work item.
+type WorkItemComment struct {
+	ID          int         `json:"id"`
+	Text        string      `json:"text"`
+	CreatedBy   IdentityRef `json:"createdBy"`
+	CreatedDate time.Time   `json:"createdDate"`
+}
+
+// WorkItemCommentsResult is the response for listing work item comments.
+type WorkItemCommentsResult struct {
+	Count    int               `json:"count"`
+	Comments []WorkItemComment `json:"comments"`
+}
+
+// AddWorkItemCommentRequest is the body for adding a comment to a work item.
+type AddWorkItemCommentRequest struct {
+	Text string `json:"text"`
+}
+
+// WorkItemLinkValue is the value for linking a work item relation.
+type WorkItemLinkValue struct {
+	Rel        string                 `json:"rel"`
+	URL        string                 `json:"url"`
+	Attributes map[string]interface{} `json:"attributes,omitempty"`
+}
+
+// WorkItemTypeState is a single state returned by the work item type states API.
+type WorkItemTypeState struct {
+	Name     string `json:"name"`
+	Color    string `json:"color"`
+	Category string `json:"category"`
+}
+
+// WorkItemStates is a fallback map used only if the API call to fetch states fails.
+var WorkItemStates = map[string][]string{
+	"Bug":        {"New", "Active", "Resolved", "Closed"},
+	"User Story": {"New", "Active", "Resolved", "Closed"},
+	"Task":       {"New", "Active", "Closed"},
+	"Feature":    {"New", "Active", "Resolved", "Closed"},
+	"Epic":       {"New", "Active", "Resolved", "Closed"},
 }

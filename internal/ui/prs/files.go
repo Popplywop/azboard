@@ -13,6 +13,11 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
+// IterationChangedMsg is emitted when the user changes the selected iteration.
+type IterationChangedMsg struct {
+	Iteration api.Iteration
+}
+
 // treeEntry is one visible row in the flattened file tree.
 type treeEntry struct {
 	change      api.IterationChange
@@ -22,13 +27,15 @@ type treeEntry struct {
 }
 
 type FilesModel struct {
-	table     table.Model
-	changes   []api.IterationChange
-	entries   []treeEntry     // currently visible rows (respects collapse state)
-	root      *pathNode       // full trie built from changes; rebuilt on SetChanges
-	collapsed map[string]bool // set of dirPath strings that are collapsed
-	width     int
-	height    int
+	table            table.Model
+	changes          []api.IterationChange
+	entries          []treeEntry     // currently visible rows (respects collapse state)
+	root             *pathNode       // full trie built from changes; rebuilt on SetChanges
+	collapsed        map[string]bool // set of dirPath strings that are collapsed
+	width            int
+	height           int
+	iterations       []api.Iteration
+	currentIteration int // index into iterations slice
 }
 
 func NewFilesModel() FilesModel {
@@ -64,7 +71,7 @@ func (m *FilesModel) SetSize(width, height int) {
 	m.width = width
 	m.height = height
 	m.recalcColumns()
-	tableHeight := height - 6 // section header + border + hint line
+	tableHeight := height - 7 // section header + iteration header + border + hint line
 	if tableHeight < 5 {
 		tableHeight = 5
 	}
@@ -76,6 +83,25 @@ func (m *FilesModel) SetChanges(changes []api.IterationChange) {
 	m.collapsed = make(map[string]bool) // reset collapse state on new data
 	m.root = buildTrie(changes)
 	m.rebuildRows()
+}
+
+// SetIterations stores the full iteration list and selects the latest one.
+func (m *FilesModel) SetIterations(iterations []api.Iteration) {
+	m.iterations = iterations
+	if len(iterations) > 0 {
+		m.currentIteration = len(iterations) - 1 // default to latest
+	} else {
+		m.currentIteration = 0
+	}
+}
+
+// CurrentIteration returns the currently selected Iteration, or a zero value
+// if no iterations have been loaded.
+func (m FilesModel) CurrentIteration() (api.Iteration, bool) {
+	if len(m.iterations) == 0 {
+		return api.Iteration{}, false
+	}
+	return m.iterations[m.currentIteration], true
 }
 
 // rebuildRows re-flattens the trie respecting the current collapsed set and
@@ -147,7 +173,22 @@ func (m FilesModel) HasChanges() bool {
 func (m FilesModel) Update(msg tea.Msg) (FilesModel, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
-		_ = msg
+		switch msg.String() {
+		case "left":
+			if len(m.iterations) > 0 && m.currentIteration > 0 {
+				m.currentIteration--
+				iter := m.iterations[m.currentIteration]
+				return m, func() tea.Msg { return IterationChangedMsg{Iteration: iter} }
+			}
+			return m, nil
+		case "right":
+			if len(m.iterations) > 0 && m.currentIteration < len(m.iterations)-1 {
+				m.currentIteration++
+				iter := m.iterations[m.currentIteration]
+				return m, func() tea.Msg { return IterationChangedMsg{Iteration: iter} }
+			}
+			return m, nil
+		}
 	}
 
 	var cmd tea.Cmd
@@ -159,9 +200,34 @@ func (m FilesModel) View() string {
 	var b strings.Builder
 	b.WriteString(theme.SectionHeader.Render(fmt.Sprintf("  Files (%d changed)", len(m.changes))))
 	b.WriteString("\n")
+
+	// Iteration picker header
+	if len(m.iterations) > 0 {
+		iter := m.iterations[m.currentIteration]
+		iterLabel := fmt.Sprintf("  Iteration %d of %d  (%s)",
+			m.currentIteration+1,
+			len(m.iterations),
+			iter.CreatedDate.Format("Jan 2, 2006"),
+		)
+		nav := ""
+		if m.currentIteration > 0 {
+			nav += theme.HelpKey.Render("←")
+		} else {
+			nav += theme.HelpDesc.Render("←")
+		}
+		nav += " "
+		if m.currentIteration < len(m.iterations)-1 {
+			nav += theme.HelpKey.Render("→")
+		} else {
+			nav += theme.HelpDesc.Render("→")
+		}
+		b.WriteString(theme.Label.Render(iterLabel) + "  " + nav)
+		b.WriteString("\n")
+	}
+
 	b.WriteString(theme.TableBorder.Render(m.table.View()))
 	b.WriteString("\n")
-	b.WriteString(theme.HelpDesc.Render("  ↑/↓ navigate · enter toggle dir / view diff · r refresh · esc back"))
+	b.WriteString(theme.HelpDesc.Render("  ↑/↓ navigate · enter toggle dir / view diff · ← → iteration · r refresh · esc back"))
 	return b.String()
 }
 

@@ -23,6 +23,18 @@ type KeyMap struct {
 	WaitForAuthor          key.Binding
 	ResetVote              key.Binding
 	Submit                 key.Binding
+	// PR lifecycle
+	Merge       key.Binding
+	Abandon     key.Binding
+	DraftToggle key.Binding
+	OpenBrowser key.Binding
+	// List
+	RepoPicker key.Binding
+	CreatePR   key.Binding
+	// Work items
+	StateTransition key.Binding
+	AddComment      key.Binding
+	LinkPR          key.Binding
 }
 
 var Keys = KeyMap{
@@ -105,5 +117,41 @@ var Keys = KeyMap{
 	Submit: key.NewBinding(
 		key.WithKeys("ctrl+s"),
 		key.WithHelp("ctrl+s", "submit"),
+	),
+	Merge: key.NewBinding(
+		key.WithKeys("m"),
+		key.WithHelp("m", "merge PR"),
+	),
+	Abandon: key.NewBinding(
+		key.WithKeys("X"),
+		key.WithHelp("X", "abandon PR"),
+	),
+	DraftToggle: key.NewBinding(
+		key.WithKeys("D"),
+		key.WithHelp("D", "toggle draft/ready"),
+	),
+	OpenBrowser: key.NewBinding(
+		key.WithKeys("o"),
+		key.WithHelp("o", "open in browser"),
+	),
+	RepoPicker: key.NewBinding(
+		key.WithKeys("R"),
+		key.WithHelp("R", "repo picker"),
+	),
+	CreatePR: key.NewBinding(
+		key.WithKeys("n"),
+		key.WithHelp("n", "create PR"),
+	),
+	StateTransition: key.NewBinding(
+		key.WithKeys("s"),
+		key.WithHelp("s", "state transition"),
+	),
+	AddComment: key.NewBinding(
+		key.WithKeys("c"),
+		key.WithHelp("c", "add comment"),
+	),
+	LinkPR: key.NewBinding(
+		key.WithKeys("L"),
+		key.WithHelp("L", "link to PR"),
 	),
 }

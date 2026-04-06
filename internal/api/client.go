@@ -18,6 +18,7 @@ import (
 type Client struct {
 	baseURL    string
 	orgURL     string // org-level URL for endpoints like connectionData
+	project    string // Azure DevOps project name
 	httpClient *http.Client
 	authMethod config.AuthMethod
 	token      string
@@ -46,9 +47,21 @@ func NewClient(cfg *config.Config) (*Client, error) {
 		orgURL = base + "/_apis"
 	}
 
+	// Build project-scoped baseURL from orgURL when set, otherwise use dev.azure.com default.
+	baseURL := fmt.Sprintf("https://dev.azure.com/%s/%s/_apis", cfg.Org, cfg.Project)
+	if cfg.OrgURL != "" {
+		base := strings.TrimRight(cfg.OrgURL, "/")
+		// Strip project suffix if it was included in OrgURL
+		if strings.HasSuffix(strings.ToLower(base), "/"+strings.ToLower(cfg.Project)) {
+			base = base[:len(base)-len(cfg.Project)-1]
+		}
+		baseURL = base + "/" + cfg.Project + "/_apis"
+	}
+
 	c := &Client{
-		baseURL:    fmt.Sprintf("https://dev.azure.com/%s/%s/_apis", cfg.Org, cfg.Project),
+		baseURL:    baseURL,
 		orgURL:     orgURL,
+		project:    cfg.Project,
 		httpClient: &http.Client{Timeout: 30 * time.Second},
 		authMethod: cfg.AuthMethod,
 	}
@@ -120,15 +133,21 @@ func (c *Client) authHeader() string {
 
 // doRequest executes an HTTP request with auth, api-version, and 401 retry.
 func (c *Client) doRequest(method, fullURL string, body interface{}, result interface{}) error {
+	return c.doRequestWithVersion(method, fullURL, "7.1", body, result)
+}
+
+// doRequestWithVersion is like doRequest but lets the caller specify the api-version string
+// (e.g. "7.1-preview.4" for preview endpoints).
+func (c *Client) doRequestWithVersion(method, fullURL, apiVersion string, body interface{}, result interface{}) error {
 	if err := c.ensureToken(); err != nil {
 		return err
 	}
 
 	// Append api-version
 	if strings.Contains(fullURL, "?") {
-		fullURL += "&api-version=7.1"
+		fullURL += "&api-version=" + apiVersion
 	} else {
-		fullURL += "?api-version=7.1"
+		fullURL += "?api-version=" + apiVersion
 	}
 
 	var bodyReader io.Reader
@@ -214,6 +233,14 @@ func (c *Client) post(path string, body interface{}, result interface{}) error {
 	return c.doRequest("POST", c.baseURL+path, body, result)
 }
 
+func (c *Client) getPreview(path, version string, result interface{}) error {
+	return c.doRequestWithVersion("GET", c.baseURL+path, version, nil, result)
+}
+
+func (c *Client) postPreview(path, version string, body interface{}, result interface{}) error {
+	return c.doRequestWithVersion("POST", c.baseURL+path, version, body, result)
+}
+
 func (c *Client) put(path string, body interface{}, result interface{}) error {
 	return c.doRequest("PUT", c.baseURL+path, body, result)
 }
@@ -225,6 +252,52 @@ func (c *Client) patch(path string, body interface{}, result interface{}) error 
 // getOrg makes a GET request against the org-level URL (no project in path).
 func (c *Client) getOrg(path string, result interface{}) error {
 	return c.doRequest("GET", c.orgURL+path, nil, result)
+}
+
+// patchJSONPatch makes a PATCH request with Content-Type application/json-patch+json.
+// Used for work item update operations.
+func (c *Client) patchJSONPatch(path string, body interface{}, result interface{}) error {
+	if err := c.ensureToken(); err != nil {
+		return err
+	}
+
+	fullURL := c.baseURL + path
+	if strings.Contains(fullURL, "?") {
+		fullURL += "&api-version=7.1"
+	} else {
+		fullURL += "?api-version=7.1"
+	}
+
+	jsonBytes, err := json.Marshal(body)
+	if err != nil {
+		return fmt.Errorf("failed to marshal request body: %w", err)
+	}
+
+	req, err := http.NewRequest("PATCH", fullURL, bytes.NewReader(jsonBytes))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Authorization", c.authHeader())
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/json-patch+json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("API returned %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	if result != nil {
+		if err := json.NewDecoder(resp.Body).Decode(result); err != nil {
+			return fmt.Errorf("failed to decode response: %w", err)
+		}
+	}
+	return nil
 }
 
 // getContent fetches raw file content (not JSON-decoded) for a given path.

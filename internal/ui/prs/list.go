@@ -18,16 +18,29 @@ import (
 
 // Messages
 type PRsLoadedMsg struct {
-	PRs []api.PullRequest
+	PRs          []api.PullRequest
+	SkippedRepos []string // repos that returned 404
 }
 
 type PRsErrorMsg struct {
 	Err error
 }
 
+// PRsSkippedReposMsg is emitted when one or more repos returned 404 during fetch.
+// app.go handles this by flashing a warning to the user.
+type PRsSkippedReposMsg struct {
+	Repos []string
+}
+
 type SelectPRMsg struct {
 	PR api.PullRequest
 }
+
+// OpenRepoPickerMsg tells AppModel to open the repo picker overlay.
+type OpenRepoPickerMsg struct{}
+
+// OpenCreatePRMsg tells AppModel to open the PR creation form.
+type OpenCreatePRMsg struct{}
 
 type prScope struct {
 	Label     string
@@ -57,9 +70,10 @@ type ListModel struct {
 	width       int
 	height      int
 	scopeIndex  int
+	repos       []string // selected repo names (empty = all projects)
 }
 
-func NewListModel(client *api.Client) ListModel {
+func NewListModel(client *api.Client, repos []string) ListModel {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 	s.Style = theme.Spinner
@@ -103,17 +117,22 @@ func NewListModel(client *api.Client) ListModel {
 	fi.Placeholder = "type to filter by title, repo, author, status..."
 	fi.CharLimit = 100
 
+	loading := len(repos) > 0
 	return ListModel{
 		client:     client,
 		table:      t,
 		spinner:    s,
 		filter:     fi,
-		loading:    true,
+		loading:    loading,
 		scopeIndex: 0,
+		repos:      repos,
 	}
 }
 
 func (m ListModel) Init() tea.Cmd {
+	if len(m.repos) == 0 {
+		return nil
+	}
 	return tea.Batch(m.spinner.Tick, m.fetchPRs())
 }
 
@@ -122,50 +141,81 @@ func (m ListModel) IsFiltering() bool {
 	return m.filtering
 }
 
+// SetRepos updates the repos and triggers a re-fetch.
+func (m *ListModel) SetRepos(repos []string) {
+	m.repos = repos
+}
+
+// is404 returns true when err is an ADO 404 (repo not found).
+func is404(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "API returned 404")
+}
+
 func (m ListModel) fetchPRs() tea.Cmd {
 	scope := m.currentScope()
+	repos := m.repos
 	return func() tea.Msg {
-		if scope.DraftOnly {
-			// Use the native ADO isDraft filter rather than fetching all active
-			// PRs and filtering client-side (which would miss PRs beyond page 1).
-			prs, err := m.client.ListDraftPullRequests()
-			if err != nil {
-				return PRsErrorMsg{Err: err}
-			}
-			return PRsLoadedMsg{PRs: prs}
+		if len(repos) == 0 {
+			return PRsLoadedMsg{PRs: nil}
 		}
 
-		if scope.APIStatus == "all" {
-			statuses := []string{"active", "completed", "abandoned"}
-			combined := make([]api.PullRequest, 0)
-			seen := make(map[int]struct{})
+		combined := make([]api.PullRequest, 0)
+		seen := make(map[int]struct{})
+		var skipped []string
 
-			for _, status := range statuses {
-				prs, err := m.client.ListPullRequests(status)
-				if err != nil {
-					return PRsErrorMsg{Err: err}
+		addPRs := func(prs []api.PullRequest) {
+			for _, pr := range prs {
+				if _, ok := seen[pr.PullRequestID]; ok {
+					continue
 				}
-				for _, pr := range prs {
-					if _, ok := seen[pr.PullRequestID]; ok {
+				seen[pr.PullRequestID] = struct{}{}
+				combined = append(combined, pr)
+			}
+		}
+
+		for _, repoName := range repos {
+			if scope.DraftOnly {
+				prs, err := m.client.ListDraftPullRequestsForRepo(repoName)
+				if err != nil {
+					if is404(err) {
+						skipped = append(skipped, repoName)
 						continue
 					}
-					seen[pr.PullRequestID] = struct{}{}
-					combined = append(combined, pr)
+					return PRsErrorMsg{Err: err}
 				}
+				addPRs(prs)
+				continue
 			}
 
-			sort.Slice(combined, func(i, j int) bool {
-				return combined[i].PullRequestID > combined[j].PullRequestID
-			})
+			statuses := []string{scope.APIStatus}
+			if scope.APIStatus == "all" {
+				statuses = []string{"active", "completed", "abandoned"}
+			}
 
-			return PRsLoadedMsg{PRs: combined}
+			repoSkipped := false
+			for _, status := range statuses {
+				prs, err := m.client.ListPullRequestsForRepo(repoName, status)
+				if err != nil {
+					if is404(err) {
+						if !repoSkipped {
+							skipped = append(skipped, repoName)
+							repoSkipped = true
+						}
+						break
+					}
+					return PRsErrorMsg{Err: err}
+				}
+				addPRs(prs)
+			}
 		}
 
-		prs, err := m.client.ListPullRequests(scope.APIStatus)
-		if err != nil {
-			return PRsErrorMsg{Err: err}
-		}
-		return PRsLoadedMsg{PRs: prs}
+		sort.Slice(combined, func(i, j int) bool {
+			return combined[i].CreationDate.After(combined[j].CreationDate)
+		})
+		return PRsLoadedMsg{PRs: combined, SkippedRepos: skipped}
 	}
 }
 
@@ -181,14 +231,20 @@ func (m ListModel) Update(msg tea.Msg) (ListModel, tea.Cmd) {
 		if m.filtering || m.filter.Value() != "" {
 			filterHeight = 2
 		}
-		// Height breakdown: tab bar (2) + scope bar (2) + status bar (2) + margin (2) = -8;
+		// Height breakdown: tab bar (2) + scope bar (2) + status bar (2) = -6;
 		// -2 for the rounded border applied in View().
-		m.table.SetHeight(m.height - 8 - filterHeight - 2)
+		m.table.SetHeight(m.height - 6 - filterHeight - 2)
 
 	case PRsLoadedMsg:
 		m.loading = false
 		m.prs = msg.PRs
 		m.applyFilter()
+		if len(msg.SkippedRepos) > 0 {
+			skipped := msg.SkippedRepos
+			cmds = append(cmds, func() tea.Msg {
+				return PRsSkippedReposMsg{Repos: skipped}
+			})
+		}
 
 	case PRsErrorMsg:
 		m.loading = false
@@ -244,6 +300,7 @@ func (m ListModel) Update(msg tea.Msg) (ListModel, tea.Cmd) {
 			m.table.Blur()
 			m.recalcTableHeight()
 			return m, cmd
+
 		case key.Matches(msg, key.NewBinding(key.WithKeys("enter"))):
 			if !m.loading && len(m.filteredPRs) > 0 {
 				idx := m.table.Cursor()
@@ -253,20 +310,38 @@ func (m ListModel) Update(msg tea.Msg) (ListModel, tea.Cmd) {
 					}
 				}
 			}
+
 		case key.Matches(msg, key.NewBinding(key.WithKeys("["))):
 			m.cycleScope(-1)
-			m.loading = true
-			m.err = nil
-			return m, tea.Batch(m.spinner.Tick, m.fetchPRs())
+			if len(m.repos) > 0 {
+				m.loading = true
+				m.err = nil
+				return m, tea.Batch(m.spinner.Tick, m.fetchPRs())
+			}
+
 		case key.Matches(msg, key.NewBinding(key.WithKeys("]"))):
 			m.cycleScope(1)
-			m.loading = true
-			m.err = nil
-			return m, tea.Batch(m.spinner.Tick, m.fetchPRs())
+			if len(m.repos) > 0 {
+				m.loading = true
+				m.err = nil
+				return m, tea.Batch(m.spinner.Tick, m.fetchPRs())
+			}
+
 		case key.Matches(msg, key.NewBinding(key.WithKeys("r"))):
-			m.loading = true
-			m.err = nil
-			return m, tea.Batch(m.spinner.Tick, m.fetchPRs())
+			if len(m.repos) > 0 {
+				m.loading = true
+				m.err = nil
+				return m, tea.Batch(m.spinner.Tick, m.fetchPRs())
+			}
+
+		case key.Matches(msg, key.NewBinding(key.WithKeys("R"))):
+			// Open repo picker
+			return m, func() tea.Msg { return OpenRepoPickerMsg{} }
+
+		case key.Matches(msg, key.NewBinding(key.WithKeys("n"))):
+			// Open PR creation form
+			return m, func() tea.Msg { return OpenCreatePRMsg{} }
+
 		case key.Matches(msg, key.NewBinding(key.WithKeys("esc"))):
 			// If there's an active filter, clear it
 			if m.filter.Value() != "" {
@@ -287,14 +362,29 @@ func (m ListModel) Update(msg tea.Msg) (ListModel, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
+// RefreshWithRepos updates repos selection and re-fetches PRs.
+func (m ListModel) RefreshWithRepos(repos []string) (ListModel, tea.Cmd) {
+	m.repos = repos
+	m.prs = nil
+	m.filteredPRs = nil
+	m.err = nil
+	if len(repos) == 0 {
+		m.loading = false
+		m.table.SetRows(nil)
+		return m, nil
+	}
+	m.loading = true
+	return m, tea.Batch(m.spinner.Tick, m.fetchPRs())
+}
+
 func (m *ListModel) recalcTableHeight() {
 	filterHeight := 0
 	if m.filtering || m.filter.Value() != "" {
 		filterHeight = 2
 	}
-	// Height breakdown: tab bar (2) + scope bar (2) + status bar (2) + margin (2) = -8;
+	// Height breakdown: tab bar (2) + scope bar (2) + status bar (2) = -6;
 	// -2 for the rounded border applied in View().
-	h := m.height - 8 - filterHeight - 2
+	h := m.height - 6 - filterHeight - 2
 	if h < 5 {
 		h = 5
 	}
@@ -433,6 +523,11 @@ func (m ListModel) formatReviewers(reviewers []api.Reviewer) string {
 }
 
 func (m ListModel) View() string {
+	// No repos selected — empty state
+	if len(m.repos) == 0 {
+		return "\n  No repositories selected.\n  Press R to open the repo picker, or set AZBOARD_REPOS in your config file.\n"
+	}
+
 	if m.loading {
 		return fmt.Sprintf("\n  %s Loading pull requests...\n", m.spinner.View())
 	}
@@ -442,7 +537,7 @@ func (m ListModel) View() string {
 	}
 
 	if len(m.prs) == 0 {
-		return fmt.Sprintf("\n  No %s pull requests found.\n\n  Press 'r' to refresh", strings.ToLower(m.currentScope().Label))
+		return fmt.Sprintf("\n  No %s pull requests found.\n\n  Press 'r' to refresh, 'n' to create a PR", strings.ToLower(m.currentScope().Label))
 	}
 
 	var sections []string
@@ -528,3 +623,5 @@ func shortName(name string) string {
 	// First name + last initial
 	return fmt.Sprintf("%s %s.", parts[0], string([]rune(parts[len(parts)-1])[0:1]))
 }
+
+// Ensure repopicker is imported (used by app.go indirectly)

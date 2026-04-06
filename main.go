@@ -3,7 +3,9 @@ package main
 import (
 	"fmt"
 	"os"
+	"strconv"
 
+	"github.com/charmbracelet/colorprofile"
 	"github.com/popplywop/azboard/internal/api"
 	"github.com/popplywop/azboard/internal/config"
 	"github.com/popplywop/azboard/internal/ui"
@@ -12,18 +14,29 @@ import (
 )
 
 func main() {
+	// Parse optional --pr <id> flag before loading config.
+	var jumpToPRID int
+	args := os.Args[1:]
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--pr" && i+1 < len(args) {
+			id, err := strconv.Atoi(args[i+1])
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error: --pr requires an integer PR ID\n")
+				os.Exit(1)
+			}
+			jumpToPRID = id
+			i++
+		}
+	}
+
 	cfg, err := config.Load()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %s\n\n", err)
-		fmt.Fprintf(os.Stderr, "Setup:\n")
-		fmt.Fprintf(os.Stderr, "  Create a config file at %s:\n\n", config.ConfigFilePath())
-		fmt.Fprintf(os.Stderr, "    # Auth: \"pat\" or \"azcli\" (default: azcli)\n")
+		fmt.Fprintf(os.Stderr, "Create a config file at %s:\n\n", config.ConfigFilePath())
 		fmt.Fprintf(os.Stderr, "    AZURE_DEVOPS_AUTH_METHOD=pat\n")
 		fmt.Fprintf(os.Stderr, "    AZURE_DEVOPS_ORG_URL=https://dev.azure.com/yourorg\n")
+		fmt.Fprintf(os.Stderr, "    AZURE_DEVOPS_DEFAULT_PROJECT=YourProject\n")
 		fmt.Fprintf(os.Stderr, "    AZURE_DEVOPS_PAT=your-personal-access-token\n")
-		fmt.Fprintf(os.Stderr, "    AZURE_DEVOPS_DEFAULT_PROJECT=YourProject\n\n")
-		fmt.Fprintf(os.Stderr, "  Or use environment variables / flags:\n")
-		fmt.Fprintf(os.Stderr, "    azboard --org <organization> --project <project>\n")
 		os.Exit(1)
 	}
 
@@ -38,9 +51,19 @@ func main() {
 		os.Exit(1)
 	}
 
-	model := ui.NewAppModel(client, cfg.Org, cfg.Project)
+	model := ui.NewAppModel(
+		client,
+		cfg.Org,
+		cfg.Project,
+		cfg.OrgURL,
+		cfg.Repos,
+		cfg.WorkItemTypes,
+		cfg.DefaultMergeStrategy,
+		cfg.AreaPath,
+		jumpToPRID,
+	)
 
-	p := tea.NewProgram(model)
+	p := tea.NewProgram(model, tea.WithColorProfile(colorprofile.TrueColor))
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error running TUI: %s\n", err)
 		os.Exit(1)
