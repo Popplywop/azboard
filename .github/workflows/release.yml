@@ -17,21 +17,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4.3.0
+        uses: actions/checkout@v6.0.2
         with:
           fetch-depth: 0
 
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v6.4.0
         with:
           go-version-file: go.mod
           cache: true
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@v3
+        uses: sigstore/cosign-installer@v3.10.1
 
       - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v6.0.2
+        uses: goreleaser/goreleaser-action@v6.4.0
         with:
           distribution: goreleaser
           version: "~> v2"
