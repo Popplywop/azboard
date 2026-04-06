@@ -11,17 +11,41 @@ Built with [Bubble Tea](https://github.com/charmbracelet/bubbletea),
 
 ## Installation
 
+### Script (Linux & macOS)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Popplywop/azboard/main/install.sh | sh
+```
+
+Installs the latest release to `/usr/local/bin`. To install elsewhere:
+
+```bash
+INSTALL_DIR=~/.local/bin curl -fsSL https://raw.githubusercontent.com/Popplywop/azboard/main/install.sh | sh
+```
+
+### Pre-built binaries
+
+Download the latest release for your platform from the
+[releases page](https://github.com/Popplywop/azboard/releases/latest):
+
+| Platform | File |
+|----------|------|
+| Linux x86-64 | `azboard_*_linux_amd64.tar.gz` |
+| Linux ARM64 | `azboard_*_linux_arm64.tar.gz` |
+| macOS Intel | `azboard_*_darwin_amd64.tar.gz` |
+| macOS Apple Silicon | `azboard_*_darwin_arm64.tar.gz` |
+| Windows x86-64 | `azboard_*_windows_amd64.zip` |
+
+Extract and move the `azboard` binary somewhere on your `$PATH`.
+
+### Build from source
+
 Requires Go 1.21+.
 
 ```bash
-git clone https://github.com/popplywop/azboard
+git clone https://github.com/Popplywop/azboard
 cd azboard
 go build -o azboard .
-```
-
-Move the binary somewhere on your `$PATH`:
-
-```bash
 mv azboard /usr/local/bin/azboard
 ```
 
