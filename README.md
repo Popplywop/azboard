@@ -297,22 +297,6 @@ to open the repo picker and select which repositories to load.
 
 ---
 
-## Roadmap
-
-See [MVP.md](./MVP.md) for the detailed implementation plan and phased feature breakdown.
-
-**Post-MVP (planned):**
-- Sprint board / kanban view
-- CI/CD pipeline status and run logs
-- PR reviewer assignment at creation time
-- Markdown rendering in PR descriptions and work item descriptions
-- Configurable keybindings
-- Notifications
-- External diff pager support (delta, difftastic)
-- Multi-project switching
-
----
-
 ## Contributing
 
 azboard is in active development. Bug reports and pull requests are welcome.
