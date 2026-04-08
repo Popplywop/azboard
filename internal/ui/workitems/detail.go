@@ -214,33 +214,39 @@ func (m DetailModel) submitComment() tea.Cmd {
 }
 
 func (m DetailModel) submitLinkPR(prIDStr string) tea.Cmd {
-	// Build a minimal artifact URL — we don't have the project GUID readily,
-	// so use a placeholder format; the actual linking requires a full vstfs URL.
-	// For MVP we construct the URL using the work item's project ID context.
 	id := m.item.ID
-	orgURL := m.orgURL
-	project := m.project
 	return func() tea.Msg {
-		// Try to parse PR ID
-		prID := strings.TrimSpace(prIDStr)
-		if prID == "" {
+		prIDStr = strings.TrimSpace(prIDStr)
+		if prIDStr == "" {
 			return PRLinkErrorMsg{Err: fmt.Errorf("PR ID cannot be empty")}
 		}
-		// ADO artifact URL: we need the project GUID and repo GUID which we
-		// don't have here; this is a best-effort using the project name.
-		// Actual format: vstfs:///Git/PullRequestId/{projectID}/{repoID}/{prID}
-		// We'll use the simpler approach of constructing a hyperlink-style URL.
-		_ = orgURL
-		// Best-effort MVP: use project name in place of project GUID and omit
-		// the repo GUID (use a zeroed placeholder). ADO commonly accepts the
-		// project name here; the proper fix would require passing the repo GUID.
-		artifactURL := fmt.Sprintf("vstfs:///Git/PullRequestId/%s/%s",
-			project, prID)
-		err := m.client.LinkWorkItemToPR(id, artifactURL)
+
+		// Parse PR ID as integer so we can fetch PR details.
+		var prIDInt int
+		if _, err := fmt.Sscanf(prIDStr, "%d", &prIDInt); err != nil {
+			return PRLinkErrorMsg{Err: fmt.Errorf("invalid PR ID %q: %w", prIDStr, err)}
+		}
+
+		// Fetch the PR to obtain the repository GUID.
+		pr, err := m.client.GetPullRequestByID(prIDInt)
 		if err != nil {
+			return PRLinkErrorMsg{Err: fmt.Errorf("could not find PR %d: %w", prIDInt, err)}
+		}
+
+		// Fetch the project GUID.
+		projectID, err := m.client.GetProjectID()
+		if err != nil {
+			return PRLinkErrorMsg{Err: fmt.Errorf("could not get project ID: %w", err)}
+		}
+
+		// ADO artifact URL format: vstfs:///Git/PullRequestId/{projectGUID}/{repoGUID}/{prID}
+		artifactURL := fmt.Sprintf("vstfs:///Git/PullRequestId/%s/%s/%d",
+			projectID, pr.Repository.ID, prIDInt)
+
+		if err := m.client.LinkWorkItemToPR(id, artifactURL); err != nil {
 			return PRLinkErrorMsg{Err: err}
 		}
-		return PRLinkedMsg{PRID: prID}
+		return PRLinkedMsg{PRID: prIDStr}
 	}
 }
 

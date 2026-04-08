@@ -2,6 +2,23 @@ package api
 
 import "fmt"
 
+// projectResponse is the minimal shape of an ADO project returned by the projects API.
+type projectResponse struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// GetProjectID returns the GUID of the configured project.
+// It calls the ADO projects API using the project name.
+func (c *Client) GetProjectID() (string, error) {
+	path := fmt.Sprintf("/projects/%s", c.project)
+	var proj projectResponse
+	if err := c.getOrg(path, &proj); err != nil {
+		return "", fmt.Errorf("get project %s: %w", c.project, err)
+	}
+	return proj.ID, nil
+}
+
 // ListRepositories returns all git repositories in the project.
 func (c *Client) ListRepositories() ([]GitRepository, error) {
 	var resp ListResponse[GitRepository]
