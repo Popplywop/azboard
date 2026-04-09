@@ -222,8 +222,6 @@ func NewCreatePRModel(client *api.Client, repos []string) CreatePRModel {
 
 func (m CreatePRModel) Init() tea.Cmd { return nil }
 
-func (m CreatePRModel) IsActive() bool { return true }
-
 func (m CreatePRModel) fetchBranchesCmd() tea.Cmd {
 	client := m.client
 	repo := m.repoChosen
@@ -284,7 +282,7 @@ func (m CreatePRModel) Update(msg tea.Msg) (CreatePRModel, tea.Cmd) {
 			return m.trySubmit()
 
 		case "enter", "tab":
-			if m.step == stepDescription || m.step == stepDraft {
+			if m.step == stepDraft {
 				return m.trySubmit()
 			}
 			cmd := m.advanceStep()

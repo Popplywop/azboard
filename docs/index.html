@@ -4,313 +4,419 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>azboard - Azure DevOps TUI</title>
-  <meta name="description" content="azboard is a keyboard-driven terminal UI for Azure DevOps pull requests and work items.">
+  <meta name="description" content="A fast, keyboard-driven terminal UI for Azure DevOps pull requests and work items.">
+  <link rel="icon" type="image/svg+xml" href="icon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;0,8..60,700;1,8..60,400&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg: #0f1724;
-      --bg-alt: #131f33;
-      --card: #18263c;
-      --text: #e8f0ff;
-      --muted: #b7c6e3;
-      --line: #2c3f5f;
-      --accent: #4fd1a9;
-      --accent-strong: #34c38f;
-      --shadow: 0 12px 30px rgba(2, 8, 20, 0.45);
+      --bg: #fafaf8;
+      --bg-sidebar: #f2f1ee;
+      --bg-code: #f5f4f1;
+      --bg-card: #ffffff;
+      --text: #1a1a18;
+      --text-secondary: #5c5c56;
+      --text-tertiary: #8a8a82;
+      --border: #e0dfda;
+      --border-strong: #cccbc5;
+      --accent: #0f7b5f;
+      --accent-hover: #0a5e48;
+      --accent-bg: #e8f5f0;
+      --accent-light: #d4f0e6;
+      --serif: "Source Serif 4", Georgia, "Times New Roman", serif;
+      --mono: "IBM Plex Mono", "JetBrains Mono", "Cascadia Code", monospace;
+      --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+      --sidebar-w: 260px;
+      --header-h: 56px;
+      --radius: 6px;
     }
+    * { box-sizing: border-box; margin: 0; }
+    html { scroll-behavior: smooth; }
+    body { font-family: var(--serif); color: var(--text); background: var(--bg); line-height: 1.7; font-size: 16.5px; -webkit-font-smoothing: antialiased; }
 
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      font-family: "Segoe UI", "Avenir Next", "Helvetica Neue", sans-serif;
-      color: var(--text);
-      background:
-        radial-gradient(1000px 380px at 0% 0%, #1c2f4d 0%, rgba(28, 47, 77, 0) 70%),
-        radial-gradient(900px 320px at 100% 0%, #1b3f46 0%, rgba(27, 63, 70, 0) 68%),
-        linear-gradient(180deg, var(--bg) 0%, #0b1220 100%);
-      line-height: 1.5;
-    }
+    /* HEADER */
+    header { position: fixed; top: 0; left: 0; right: 0; z-index: 100; height: var(--header-h); background: rgba(250,250,248,0.92); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 24px; }
+    header .logo { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--text); font-family: var(--mono); font-weight: 600; font-size: 1.05rem; letter-spacing: -0.02em; }
+    header .logo img { width: 28px; height: 28px; border-radius: 6px; }
+    header nav { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+    header nav a { font-family: var(--sans); font-size: 0.85rem; color: var(--text-secondary); text-decoration: none; padding: 6px 12px; border-radius: var(--radius); transition: color 100ms, background 100ms; }
+    header nav a:hover { color: var(--text); background: var(--bg-sidebar); }
+    header nav a.gh { display: inline-flex; align-items: center; gap: 6px; }
+    header nav a.gh svg { width: 18px; height: 18px; fill: currentColor; }
 
-    .wrap {
-      width: min(980px, 92vw);
-      margin: 0 auto;
-      padding: 40px 0 56px;
-    }
+    /* LAYOUT */
+    .shell { display: flex; margin-top: var(--header-h); min-height: calc(100vh - var(--header-h)); }
 
-    h1 {
-      margin: 0;
-      font-size: clamp(2rem, 4vw, 3.2rem);
-      letter-spacing: 0.02em;
-    }
+    /* SIDEBAR */
+    aside { position: fixed; top: var(--header-h); left: 0; bottom: 0; width: var(--sidebar-w); background: var(--bg-sidebar); border-right: 1px solid var(--border); overflow-y: auto; padding: 20px 0; font-family: var(--sans); font-size: 0.84rem; }
+    aside .nav-group { padding: 0 16px; margin-bottom: 18px; }
+    aside .nav-group-title { font-weight: 600; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-tertiary); padding: 0 8px; margin-bottom: 4px; }
+    aside a { display: block; padding: 5px 8px; border-radius: var(--radius); color: var(--text-secondary); text-decoration: none; transition: color 80ms, background 80ms; line-height: 1.4; }
+    aside a:hover, aside a.active { color: var(--text); background: rgba(0,0,0,0.04); }
+    aside a.active { color: var(--accent); font-weight: 500; }
 
-    p.lead {
-      margin: 14px 0 0;
-      color: var(--muted);
-      max-width: 70ch;
-      font-size: 1.05rem;
-    }
+    /* MAIN */
+    main { margin-left: var(--sidebar-w); flex: 1; max-width: 780px; padding: 40px 48px 80px; }
 
-    .row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 12px;
-      margin-top: 22px;
-    }
+    /* TYPOGRAPHY */
+    h1 { font-family: var(--serif); font-size: 2.1rem; font-weight: 700; line-height: 1.2; letter-spacing: -0.02em; margin-bottom: 8px; }
+    h1 .version { font-family: var(--mono); font-size: 0.65em; font-weight: 400; color: var(--text-tertiary); vertical-align: middle; margin-left: 8px; }
+    .lead { font-size: 1.1rem; color: var(--text-secondary); margin-bottom: 28px; max-width: 60ch; }
+    h2 { font-family: var(--serif); font-size: 1.45rem; font-weight: 600; margin: 48px 0 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border); letter-spacing: -0.01em; }
+    h2:first-of-type { margin-top: 32px; }
+    h3 { font-family: var(--serif); font-size: 1.1rem; font-weight: 600; margin: 28px 0 8px; }
+    p { margin: 0 0 14px; }
+    a { color: var(--accent); text-decoration-color: var(--accent-light); text-underline-offset: 2px; transition: color 80ms; }
+    a:hover { color: var(--accent-hover); }
 
-    .btn {
-      display: inline-block;
-      padding: 10px 14px;
-      border-radius: 10px;
-      border: 1px solid var(--line);
-      color: var(--text);
-      text-decoration: none;
-      background: var(--bg-alt);
-      transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
-    }
+    /* CODE */
+    code { font-family: var(--mono); font-size: 0.88em; background: var(--bg-code); padding: 2px 5px; border-radius: 4px; border: 1px solid var(--border); }
+    pre { position: relative; margin: 12px 0 18px; padding: 16px 18px; background: #1e1e1e; color: #d4d4d4; border-radius: 8px; overflow-x: auto; font-size: 0.88rem; line-height: 1.55; border: 1px solid #333; }
+    pre code { background: none; border: none; padding: 0; font-size: inherit; color: inherit; }
+    pre .copy-btn { position: absolute; top: 8px; right: 8px; width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid #444; background: #2a2a2a; color: #ccc; border-radius: 6px; cursor: pointer; opacity: 0; transition: opacity 150ms, border-color 100ms, color 100ms; padding: 0; }
+    pre:hover .copy-btn { opacity: 1; }
+    pre .copy-btn:hover { border-color: #5ee9b5; color: #fff; }
+    pre .copy-btn.copied { border-color: #5ee9b5; color: #5ee9b5; }
+    pre .copy-btn svg { width: 15px; height: 15px; fill: currentColor; }
+    .tok-str { color: #ce9178; } .tok-kw { color: #569cd6; } .tok-cmt { color: #6a9955; } .tok-flag { color: #9cdcfe; }
 
-    .btn:hover {
-      transform: translateY(-1px);
-      border-color: var(--accent);
-      background: #1a2a42;
-    }
+    /* TABLES */
+    table { width: 100%; border-collapse: collapse; margin: 12px 0 18px; font-size: 0.92rem; }
+    th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+    th { font-family: var(--sans); font-weight: 600; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-tertiary); background: var(--bg-sidebar); }
+    td code { font-size: 0.85em; white-space: nowrap; }
 
-    .btn.primary {
-      background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
-      color: #06291f;
-      border-color: transparent;
-      font-weight: 600;
-    }
+    /* KBD */
+    kbd { display: inline-block; font-family: var(--mono); font-size: 0.8em; padding: 2px 6px; border: 1px solid var(--border-strong); border-radius: 4px; background: var(--bg); box-shadow: 0 1px 0 var(--border-strong); line-height: 1.3; white-space: nowrap; }
 
-    section {
-      margin-top: 26px;
-      padding: 18px;
-      border-radius: 14px;
-      background: linear-gradient(180deg, rgba(24, 38, 60, 0.9), rgba(15, 24, 38, 0.95));
-      border: 1px solid var(--line);
-      box-shadow: var(--shadow);
-    }
+    /* INSTALL CARD */
+    .install-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 20px; margin: 16px 0 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+    .install-card .tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 14px; font-family: var(--sans); font-size: 0.85rem; }
+    .install-card .tab { padding: 8px 16px; cursor: pointer; color: var(--text-tertiary); border-bottom: 2px solid transparent; margin-bottom: -1px; transition: color 80ms; background: none; border-top: none; border-left: none; border-right: none; font-family: inherit; font-size: inherit; }
+    .install-card .tab:hover { color: var(--text); }
+    .install-card .tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 500; }
+    .install-card .tab-content { display: none; }
+    .install-card .tab-content.active { display: block; }
+    .install-card .note { font-family: var(--sans); font-size: 0.82rem; color: var(--text-tertiary); margin-top: 8px; }
 
-    h2 {
-      margin: 0 0 10px;
-      font-size: 1.2rem;
-    }
+    /* FEATURE GRID */
+    .feature-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0 18px; }
+    .feature-card { padding: 16px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-card); }
+    .feature-card h4 { font-family: var(--sans); font-size: 0.9rem; font-weight: 600; margin: 0 0 6px; display: flex; align-items: center; gap: 6px; }
+    .feature-card h4 .fi { width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
+    .feature-card p { font-size: 0.85rem; color: var(--text-secondary); margin: 0; line-height: 1.5; }
 
-    ul {
-      margin: 0;
-      padding-left: 18px;
-      color: var(--muted);
-    }
+    /* FOOTER */
+    footer { margin-left: var(--sidebar-w); padding: 24px 48px; border-top: 1px solid var(--border); font-family: var(--sans); font-size: 0.8rem; color: var(--text-tertiary); }
 
-    pre {
-      margin: 0;
-      padding: 12px;
-      background: #0a1221;
-      border: 1px solid #2a3b5a;
-      border-radius: 10px;
-      overflow-x: auto;
-      color: #ddf3ff;
-      font-size: 0.95rem;
-    }
-
-    .label {
-      display: block;
-      margin: 0 0 8px;
-      color: var(--muted);
-      font-size: 0.92rem;
-    }
-
-    .select {
-      width: auto;
-      min-width: 190px;
-      max-width: 280px;
-      margin-bottom: 10px;
-      padding: 9px 10px;
-      border-radius: 8px;
-      border: 1px solid var(--line);
-      background: #0f1a2b;
-      color: var(--text);
-    }
-
-    .install-controls {
-      display: flex;
-      align-items: end;
-      flex-wrap: nowrap;
-      gap: 10px;
-      margin-bottom: 10px;
-    }
-
-    .control-group {
-      display: flex;
-      flex-direction: column;
-    }
-
-    .command-wrap {
-      position: relative;
-      margin-top: 2px;
-    }
-
-    .copy-btn {
-      position: absolute;
-      top: 8px;
-      right: 8px;
-      width: 34px;
-      height: 34px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      border: 1px solid #334b72;
-      background: #12213a;
-      color: var(--text);
-      border-radius: 8px;
-      padding: 0;
-      cursor: pointer;
-      transition: border-color 120ms ease, background 120ms ease;
-    }
-
-    .copy-btn:hover {
-      border-color: var(--accent);
-      background: #163051;
-    }
-
-    .copy-btn svg {
-      width: 17px;
-      height: 17px;
-      fill: currentColor;
-    }
-
-    .copy-btn.copied {
-      border-color: var(--accent);
-      color: #9ff0d5;
-    }
-
-    code { font-family: "JetBrains Mono", "Cascadia Code", monospace; }
-    .muted { color: var(--muted); }
-    footer { margin-top: 24px; color: var(--muted); font-size: 0.95rem; }
-
-    @media (max-width: 820px) {
-      .install-controls {
-        display: grid;
-        grid-template-columns: 1fr;
-      }
-      .select {
-        width: 100%;
-        max-width: none;
-      }
+    /* MOBILE */
+    .menu-toggle { display: none; background: none; border: none; cursor: pointer; padding: 4px; color: var(--text); margin-right: 8px; }
+    .menu-toggle svg { width: 22px; height: 22px; fill: currentColor; }
+    @media (max-width: 900px) {
+      .menu-toggle { display: block; }
+      aside { transform: translateX(-100%); transition: transform 200ms ease; z-index: 90; background: var(--bg); }
+      aside.open { transform: translateX(0); }
+      main { margin-left: 0; padding: 32px 20px 60px; }
+      footer { margin-left: 0; padding: 24px 20px; }
+      .feature-grid { grid-template-columns: 1fr; }
     }
   </style>
 </head>
 <body>
-  <main class="wrap">
-    <h1>azboard</h1>
-    <p class="lead">A fast, keyboard-driven terminal UI for Azure DevOps. Review pull requests, manage work items, and stay in your terminal.</p>
 
-    <div class="row">
-      <a class="btn primary" href="https://github.com/Popplywop/azboard/releases/latest">Download latest release</a>
-      <a class="btn" href="https://github.com/Popplywop/azboard">GitHub repository</a>
-      <a class="btn" href="https://github.com/Popplywop/azboard#readme">Full README</a>
+<header>
+  <button class="menu-toggle" id="menu-toggle" aria-label="Toggle navigation">
+    <svg viewBox="0 0 24 24"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg>
+  </button>
+  <a href="#" class="logo"><img src="icon.svg" alt="">azboard</a>
+  <nav>
+    <a href="https://github.com/Popplywop/azboard/releases/latest">Releases</a>
+    <a href="https://github.com/Popplywop/azboard" class="gh">
+      <svg viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+      GitHub
+    </a>
+  </nav>
+</header>
+
+<div class="shell">
+<aside id="sidebar">
+  <div class="nav-group">
+    <div class="nav-group-title">Getting Started</div>
+    <a href="#installation">Installation</a>
+    <a href="#quick-start">Quick Start</a>
+    <a href="#configuration">Configuration</a>
+    <a href="#authentication">Authentication</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">Features</div>
+    <a href="#features">Overview</a>
+    <a href="#pull-requests">Pull Requests</a>
+    <a href="#code-review">Code Review</a>
+    <a href="#work-items">Work Items</a>
+    <a href="#repo-selection">Repo Selection</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">Reference</div>
+    <a href="#keybindings">Keybindings</a>
+    <a href="#config-reference">Config Reference</a>
+    <a href="#verifying-releases">Verifying Releases</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">Project</div>
+    <a href="#contributing">Contributing</a>
+    <a href="https://github.com/Popplywop/azboard">GitHub</a>
+  </div>
+</aside>
+
+<main>
+  <h1>azboard <span class="version">v0.0.1</span></h1>
+  <p class="lead">A fast, keyboard-driven terminal UI for Azure DevOps. Review pull requests, manage work items, and stay in your terminal.</p>
+
+  <h2 id="installation">Installation</h2>
+  <div class="install-card">
+    <div class="tabs">
+      <button class="tab active" data-tab="unix">Linux / macOS</button>
+      <button class="tab" data-tab="windows">Windows</button>
+      <button class="tab" data-tab="binary">Binary</button>
+      <button class="tab" data-tab="source">Source</button>
     </div>
+    <div class="tab-content active" id="tab-unix">
+      <pre><code><span class="tok-kw">curl</span> <span class="tok-flag">-fsSL</span> https://popplywop.github.io/azboard/install.sh | sh</code><button class="copy-btn" aria-label="Copy" data-copy="curl -fsSL https://popplywop.github.io/azboard/install.sh | sh"><svg viewBox="0 0 24 24"><path d="M16 1H6a2 2 0 0 0-2 2v12h2V3h10V1zm3 4H10a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H10V7h9v14z"/></svg></button></pre>
+      <p class="note">Installs to <code>/usr/local/bin</code>. Set <code>INSTALL_DIR</code> to change.</p>
+    </div>
+    <div class="tab-content" id="tab-windows">
+      <pre><code><span class="tok-kw">iwr</span> https://popplywop.github.io/azboard/install.ps1 | <span class="tok-kw">iex</span></code><button class="copy-btn" aria-label="Copy" data-copy="iwr https://popplywop.github.io/azboard/install.ps1 | iex"><svg viewBox="0 0 24 24"><path d="M16 1H6a2 2 0 0 0-2 2v12h2V3h10V1zm3 4H10a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H10V7h9v14z"/></svg></button></pre>
+      <p class="note">Installs to <code>%LOCALAPPDATA%\azboard</code> and adds to PATH.</p>
+    </div>
+    <div class="tab-content" id="tab-binary">
+      <p>Download from the <a href="https://github.com/Popplywop/azboard/releases/latest">releases page</a>:</p>
+      <table><thead><tr><th>Platform</th><th>File</th></tr></thead><tbody>
+        <tr><td>Linux x86-64</td><td><code>azboard_*_linux_amd64.tar.gz</code></td></tr>
+        <tr><td>Linux ARM64</td><td><code>azboard_*_linux_arm64.tar.gz</code></td></tr>
+        <tr><td>macOS Intel</td><td><code>azboard_*_darwin_amd64.tar.gz</code></td></tr>
+        <tr><td>macOS Apple Silicon</td><td><code>azboard_*_darwin_arm64.tar.gz</code></td></tr>
+        <tr><td>Windows x86-64</td><td><code>azboard_*_windows_amd64.zip</code></td></tr>
+      </tbody></table>
+    </div>
+    <div class="tab-content" id="tab-source">
+      <p>Requires Go 1.21+.</p>
+      <pre><code><span class="tok-kw">git clone</span> https://github.com/Popplywop/azboard
+<span class="tok-kw">cd</span> azboard
+<span class="tok-kw">go build</span> <span class="tok-flag">-o</span> azboard .
+<span class="tok-kw">mv</span> azboard /usr/local/bin/azboard</code><button class="copy-btn" aria-label="Copy" data-copy="git clone https://github.com/Popplywop/azboard && cd azboard && go build -o azboard . && mv azboard /usr/local/bin/azboard"><svg viewBox="0 0 24 24"><path d="M16 1H6a2 2 0 0 0-2 2v12h2V3h10V1zm3 4H10a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H10V7h9v14z"/></svg></button></pre>
+    </div>
+  </div>
 
-    <section>
-      <h2>Quick install</h2>
-      <p class="muted">Choose your platform, then copy one command.</p>
+  <h2 id="quick-start">Quick Start</h2>
+  <p><strong>1.</strong> Install azboard using one of the methods above.</p>
+  <p><strong>2.</strong> Create a config file at <code>~/.config/azboard/config.json</code>:</p>
+  <pre><code>{
+  <span class="tok-str">"org_url"</span>: <span class="tok-str">"https://dev.azure.com/your-org"</span>,
+  <span class="tok-str">"project"</span>: <span class="tok-str">"your-project"</span>
+}</code></pre>
+  <p><strong>3.</strong> Authenticate with Azure CLI:</p>
+  <pre><code><span class="tok-kw">az</span> login</code></pre>
+  <p><strong>4.</strong> Launch: <code>azboard</code></p>
+  <p><strong>5.</strong> Press <kbd>R</kbd> to open the repo picker, select repos with <kbd>Space</kbd>, press <kbd>Ctrl</kbd>+<kbd>S</kbd> to save.</p>
 
-      <div class="install-controls">
-        <div class="control-group">
-          <label class="label" for="platform">Platform</label>
-          <select id="platform" class="select" aria-label="Platform">
-            <option value="unix">Linux / macOS</option>
-            <option value="windows">Windows (PowerShell)</option>
-          </select>
-        </div>
-        <div class="control-group" id="arch-wrap">
-          <label class="label" for="arch">Architecture</label>
-          <select id="arch" class="select" aria-label="Architecture">
-            <option value="amd64">amd64 (x86_64)</option>
-            <option value="arm64">arm64 (Apple Silicon / aarch64)</option>
-          </select>
-        </div>
-      </div>
+  <h2 id="configuration">Configuration</h2>
+  <p>All settings are read from <code>~/.config/azboard/config.json</code>.</p>
+  <h3>Full Example</h3>
+  <pre><code>{
+  <span class="tok-str">"org_url"</span>: <span class="tok-str">"https://dev.azure.com/your-org"</span>,
+  <span class="tok-str">"project"</span>: <span class="tok-str">"your-project"</span>,
+  <span class="tok-str">"auth_method"</span>: <span class="tok-str">"azcli"</span>,
+  <span class="tok-str">"repos"</span>: [<span class="tok-str">"my-api"</span>, <span class="tok-str">"my-frontend"</span>],
+  <span class="tok-str">"work_item_types"</span>: [<span class="tok-str">"User Story"</span>, <span class="tok-str">"Bug"</span>, <span class="tok-str">"Task"</span>],
+  <span class="tok-str">"default_merge_strategy"</span>: <span class="tok-str">"squash"</span>,
+  <span class="tok-str">"area_path"</span>: <span class="tok-str">"Project\\Team"</span>
+}</code></pre>
 
-      <div class="command-wrap">
-        <pre><code id="install-cmd">INSTALL_ARCH=amd64 curl -fsSL https://popplywop.github.io/azboard/install.sh | sh</code></pre>
-        <button class="copy-btn" type="button" id="copy-btn" aria-label="Copy install command" title="Copy install command">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M16 1H6a2 2 0 0 0-2 2v12h2V3h10V1zm3 4H10a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H10V7h9v14z"/>
-          </svg>
-        </button>
-      </div>
-    </section>
+  <h3 id="config-reference">Config Reference</h3>
+  <table><thead><tr><th>Field</th><th>Required</th><th>Default</th><th>Description</th></tr></thead><tbody>
+    <tr><td><code>org_url</code></td><td>Yes</td><td>--</td><td>Azure DevOps URL. Supports <code>dev.azure.com</code> and <code>visualstudio.com</code>.</td></tr>
+    <tr><td><code>project</code></td><td>Yes</td><td>--</td><td>Project name. Can be embedded in <code>org_url</code>.</td></tr>
+    <tr><td><code>auth_method</code></td><td>No</td><td><code>azcli</code></td><td><code>azcli</code> or <code>pat</code>.</td></tr>
+    <tr><td><code>pat</code></td><td>If PAT</td><td>--</td><td>Personal access token with Code and Work Items scopes.</td></tr>
+    <tr><td><code>repos</code></td><td>No</td><td><code>[]</code></td><td>Repos to load on startup.</td></tr>
+    <tr><td><code>work_item_types</code></td><td>No</td><td>5 default types</td><td>Work item types to display.</td></tr>
+    <tr><td><code>default_merge_strategy</code></td><td>No</td><td><code>squash</code></td><td><code>squash</code>, <code>merge</code>, <code>rebase</code>, or <code>semilinear</code>.</td></tr>
+    <tr><td><code>area_path</code></td><td>No</td><td>--</td><td>Filter work items to an area path.</td></tr>
+  </tbody></table>
 
-    <section>
-      <h2>What you get</h2>
-      <ul>
-        <li>Pull request list/detail views with filtering, voting, comments, and merge actions</li>
-        <li>Code review workflow with file tree, diff viewer, iterations, and inline comments</li>
-        <li>Work item browsing, updates, comments, and PR linking</li>
-        <li>Config-driven setup for Azure DevOps org/project/repo selection</li>
-      </ul>
-    </section>
+  <h2 id="authentication">Authentication</h2>
+  <h3>Azure CLI (recommended)</h3>
+  <p>Install the <a href="https://learn.microsoft.com/en-us/cli/azure/install-azure-cli">Azure CLI</a> and run <code>az login</code>. Tokens are obtained and refreshed automatically.</p>
+  <h3>Personal Access Token</h3>
+  <p>Generate a PAT in <a href="https://learn.microsoft.com/en-us/azure/devops/organizations/accounts/use-personal-access-tokens-to-authenticate">Azure DevOps</a> with <strong>Code (Read &amp; Write)</strong> and <strong>Work Items (Read &amp; Write)</strong> scopes.</p>
+  <pre><code>{
+  <span class="tok-str">"auth_method"</span>: <span class="tok-str">"pat"</span>,
+  <span class="tok-str">"pat"</span>: <span class="tok-str">"your-token-here"</span>
+}</code></pre>
 
-    <footer>
-      Built with Bubble Tea, Bubbles, and Lip Gloss.
-    </footer>
-  </main>
+  <h2 id="features">Features</h2>
+  <div class="feature-grid">
+    <div class="feature-card"><h4><span class="fi">&#9874;</span> Pull Requests</h4><p>List, filter, create, merge, abandon, vote, comment. Full PR lifecycle in the terminal.</p></div>
+    <div class="feature-card"><h4><span class="fi">&#128269;</span> Code Review</h4><p>File tree, unified diffs with line numbers, per-iteration comparison, inline comments.</p></div>
+    <div class="feature-card"><h4><span class="fi">&#9776;</span> Work Items</h4><p>Browse stories, bugs, tasks, epics. Transition states, add comments, link to PRs.</p></div>
+    <div class="feature-card"><h4><span class="fi">&#9881;</span> Repo Selection</h4><p>Interactive multi-select picker with search. Save to config with Ctrl+S.</p></div>
+  </div>
 
-  <script>
-    (function () {
-      const platform = document.getElementById("platform");
-      const arch = document.getElementById("arch");
-      const archWrap = document.getElementById("arch-wrap");
-      const installCmd = document.getElementById("install-cmd");
-      const copyBtn = document.getElementById("copy-btn");
+  <h3 id="pull-requests">Pull Requests</h3>
+  <table><thead><tr><th>Capability</th><th>How</th></tr></thead><tbody>
+    <tr><td>List PRs across all repos</td><td>Shown on launch</td></tr>
+    <tr><td>Scope views</td><td><kbd>[</kbd> / <kbd>]</kbd> cycle Active, Draft, Completed, Abandoned, All</td></tr>
+    <tr><td>Filter</td><td><kbd>/</kbd> search by title, repo, author, status, ID, reviewer</td></tr>
+    <tr><td>Create PR</td><td><kbd>n</kbd> multi-step form with branch picker</td></tr>
+    <tr><td>Merge</td><td><kbd>m</kbd> squash, merge commit, rebase, semi-linear</td></tr>
+    <tr><td>Vote</td><td><kbd>a</kbd> approve, <kbd>A</kbd> with suggestions, <kbd>x</kbd> reject, <kbd>w</kbd> wait</td></tr>
+    <tr><td>Comment threads</td><td><kbd>c</kbd> reply, <kbd>C</kbd> new, <kbd>s</kbd> resolve, <kbd>n</kbd>/<kbd>N</kbd> navigate</td></tr>
+    <tr><td>Abandon / Draft toggle</td><td><kbd>X</kbd> abandon, <kbd>D</kbd> draft toggle</td></tr>
+    <tr><td>Open in browser</td><td><kbd>o</kbd></td></tr>
+  </tbody></table>
 
-      const unixBase = "curl -fsSL https://popplywop.github.io/azboard/install.sh | sh";
-      const windowsCmd = "iwr https://popplywop.github.io/azboard/install.ps1 | iex";
+  <h3 id="code-review">Code Review</h3>
+  <table><thead><tr><th>Capability</th><th>How</th></tr></thead><tbody>
+    <tr><td>Browse changed files</td><td><kbd>f</kbd> from PR detail -- collapsible tree</td></tr>
+    <tr><td>View diffs</td><td><kbd>Enter</kbd> on a file -- color-coded unified diff</td></tr>
+    <tr><td>Compare iterations</td><td><kbd>Left</kbd> / <kbd>Right</kbd> arrow keys</td></tr>
+    <tr><td>Inline comments</td><td><kbd>i</kbd> cursor mode, navigate, <kbd>c</kbd> to comment</td></tr>
+  </tbody></table>
 
-      function updateCommand() {
-        if (platform.value === "windows") {
-          archWrap.style.display = "none";
-          installCmd.textContent = windowsCmd;
-          return;
-        }
+  <h3 id="work-items">Work Items</h3>
+  <table><thead><tr><th>Capability</th><th>How</th></tr></thead><tbody>
+    <tr><td>List work items</td><td><kbd>Tab</kbd> switch to Work Items tab</td></tr>
+    <tr><td>Scope views</td><td><kbd>[</kbd> / <kbd>]</kbd> cycle My Work, Active, All</td></tr>
+    <tr><td>Transition state</td><td><kbd>s</kbd></td></tr>
+    <tr><td>Add comment</td><td><kbd>c</kbd></td></tr>
+    <tr><td>Link to PR</td><td><kbd>L</kbd></td></tr>
+  </tbody></table>
 
-        archWrap.style.display = "block";
-        installCmd.textContent = "INSTALL_ARCH=" + arch.value + " " + unixBase;
-      }
+  <h3 id="repo-selection">Repo Selection</h3>
+  <table><thead><tr><th>Action</th><th>Key</th></tr></thead><tbody>
+    <tr><td>Open picker</td><td><kbd>R</kbd> from PR list</td></tr>
+    <tr><td>Search repos</td><td><kbd>/</kbd> inside picker</td></tr>
+    <tr><td>Toggle selection</td><td><kbd>Space</kbd></td></tr>
+    <tr><td>Confirm</td><td><kbd>Enter</kbd></td></tr>
+    <tr><td>Save to config</td><td><kbd>Ctrl</kbd>+<kbd>S</kbd></td></tr>
+  </tbody></table>
 
-      async function copyText(text) {
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          await navigator.clipboard.writeText(text);
-          return;
-        }
+  <h2 id="keybindings">Keybindings</h2>
+  <h3>Global</h3>
+  <table><thead><tr><th>Key</th><th>Action</th></tr></thead><tbody>
+    <tr><td><kbd>Tab</kbd></td><td>Switch between Pull Requests and Work Items</td></tr>
+    <tr><td><kbd>?</kbd></td><td>Toggle help overlay</td></tr>
+    <tr><td><kbd>q</kbd></td><td>Go back / quit</td></tr>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>C</kbd></td><td>Quit</td></tr>
+  </tbody></table>
 
-        const fallback = document.createElement("textarea");
-        fallback.value = text;
-        document.body.appendChild(fallback);
-        fallback.select();
-        document.execCommand("copy");
-        document.body.removeChild(fallback);
-      }
+  <h3>PR List</h3>
+  <table><thead><tr><th>Key</th><th>Action</th></tr></thead><tbody>
+    <tr><td><kbd>Enter</kbd></td><td>Open PR detail</td></tr>
+    <tr><td><kbd>[</kbd> / <kbd>]</kbd></td><td>Cycle scope</td></tr>
+    <tr><td><kbd>/</kbd></td><td>Filter</td></tr>
+    <tr><td><kbd>n</kbd></td><td>Create new PR</td></tr>
+    <tr><td><kbd>R</kbd></td><td>Repo picker</td></tr>
+    <tr><td><kbd>r</kbd></td><td>Refresh</td></tr>
+  </tbody></table>
 
-      function flashCopiedState() {
-        copyBtn.classList.add("copied");
-        setTimeout(function () {
-          copyBtn.classList.remove("copied");
-        }, 1400);
-      }
+  <h3>PR Detail</h3>
+  <table><thead><tr><th>Key</th><th>Action</th></tr></thead><tbody>
+    <tr><td><kbd>f</kbd></td><td>Files pane</td></tr>
+    <tr><td><kbd>n</kbd> / <kbd>N</kbd></td><td>Next / prev thread</td></tr>
+    <tr><td><kbd>c</kbd> / <kbd>C</kbd></td><td>Reply / new thread</td></tr>
+    <tr><td><kbd>s</kbd></td><td>Resolve / reactivate thread</td></tr>
+    <tr><td><kbd>a</kbd> / <kbd>A</kbd></td><td>Approve / with suggestions</td></tr>
+    <tr><td><kbd>x</kbd></td><td>Reject</td></tr>
+    <tr><td><kbd>w</kbd></td><td>Wait for author</td></tr>
+    <tr><td><kbd>0</kbd></td><td>Reset vote</td></tr>
+    <tr><td><kbd>m</kbd></td><td>Merge</td></tr>
+    <tr><td><kbd>X</kbd></td><td>Abandon</td></tr>
+    <tr><td><kbd>D</kbd></td><td>Toggle draft</td></tr>
+    <tr><td><kbd>o</kbd></td><td>Open in browser</td></tr>
+    <tr><td><kbd>r</kbd></td><td>Refresh</td></tr>
+    <tr><td><kbd>Esc</kbd></td><td>Unfocus / back</td></tr>
+  </tbody></table>
 
-      copyBtn.addEventListener("click", async function () {
-        try {
-          await copyText(installCmd.textContent);
-          flashCopiedState();
-        } catch (err) {
-          copyBtn.classList.remove("copied");
-        }
-      });
+  <h3>Files &amp; Diff</h3>
+  <table><thead><tr><th>Key</th><th>Action</th></tr></thead><tbody>
+    <tr><td><kbd>Enter</kbd></td><td>View diff / toggle directory</td></tr>
+    <tr><td><kbd>Left</kbd> / <kbd>Right</kbd></td><td>Prev / next iteration</td></tr>
+    <tr><td><kbd>i</kbd></td><td>Enter cursor mode (diff)</td></tr>
+    <tr><td><kbd>j</kbd> / <kbd>k</kbd></td><td>Move cursor (cursor mode)</td></tr>
+    <tr><td><kbd>c</kbd></td><td>Inline comment (cursor mode)</td></tr>
+    <tr><td><kbd>Esc</kbd></td><td>Exit cursor mode / back</td></tr>
+  </tbody></table>
 
-      platform.addEventListener("change", updateCommand);
-      arch.addEventListener("change", updateCommand);
-      updateCommand();
-    })();
-  </script>
+  <h3>Work Item Detail</h3>
+  <table><thead><tr><th>Key</th><th>Action</th></tr></thead><tbody>
+    <tr><td><kbd>s</kbd></td><td>State transition</td></tr>
+    <tr><td><kbd>c</kbd></td><td>Add comment</td></tr>
+    <tr><td><kbd>L</kbd></td><td>Link to PR</td></tr>
+    <tr><td><kbd>o</kbd></td><td>Open in browser</td></tr>
+    <tr><td><kbd>r</kbd></td><td>Refresh</td></tr>
+    <tr><td><kbd>Esc</kbd></td><td>Back to list</td></tr>
+  </tbody></table>
+
+  <h2 id="verifying-releases">Verifying Releases</h2>
+  <p>All artifacts are signed with <a href="https://docs.sigstore.dev/cosign/system_config/installation/">cosign</a> keyless signing via GitHub Actions OIDC.</p>
+  <pre><code><span class="tok-kw">cosign</span> verify-blob \
+  <span class="tok-flag">--certificate</span>         azboard_0.0.1_linux_amd64.tar.gz.pem \
+  <span class="tok-flag">--signature</span>           azboard_0.0.1_linux_amd64.tar.gz.sig \
+  <span class="tok-flag">--certificate-identity-regexp</span> <span class="tok-str">"https://github.com/Popplywop/azboard"</span> \
+  <span class="tok-flag">--certificate-oidc-issuer</span> <span class="tok-str">"https://token.actions.githubusercontent.com"</span> \
+  azboard_0.0.1_linux_amd64.tar.gz</code></pre>
+  <p>The <code>.sig</code> and <code>.pem</code> files are attached to each release. If <code>cosign</code> is installed, <code>install.sh</code> verifies automatically.</p>
+
+  <h2 id="contributing">Contributing</h2>
+  <p>Bug reports and pull requests are welcome at <a href="https://github.com/Popplywop/azboard">github.com/Popplywop/azboard</a>.</p>
+  <pre><code><span class="tok-kw">go build</span> <span class="tok-flag">-o</span> azboard . && ./azboard   <span class="tok-cmt"># build and run</span>
+<span class="tok-kw">go test</span> ./...                       <span class="tok-cmt"># run tests</span></code></pre>
+</main>
+</div>
+
+<footer>Built with Bubble Tea, Bubbles, and Lip Gloss. MIT License.</footer>
+
+<script>
+(function() {
+  document.querySelectorAll('.install-card .tab').forEach(function(tab) {
+    tab.addEventListener('click', function() {
+      var card = tab.closest('.install-card');
+      card.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
+      card.querySelectorAll('.tab-content').forEach(function(c) { c.classList.remove('active'); });
+      tab.classList.add('active');
+      document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+    });
+  });
+  document.querySelectorAll('.copy-btn[data-copy]').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      if (navigator.clipboard) navigator.clipboard.writeText(btn.dataset.copy);
+      btn.classList.add('copied');
+      setTimeout(function() { btn.classList.remove('copied'); }, 1200);
+    });
+  });
+  var toggle = document.getElementById('menu-toggle');
+  var sidebar = document.getElementById('sidebar');
+  toggle.addEventListener('click', function() { sidebar.classList.toggle('open'); });
+  sidebar.querySelectorAll('a[href^="#"]').forEach(function(a) {
+    a.addEventListener('click', function() { sidebar.classList.remove('open'); });
+  });
+  var sections = document.querySelectorAll('h2[id], h3[id]');
+  var navLinks = sidebar.querySelectorAll('a[href^="#"]');
+  var ticking = false;
+  function updateActive() {
+    var scrollY = window.scrollY + 80;
+    var current = '';
+    sections.forEach(function(s) { if (s.offsetTop <= scrollY) current = s.id; });
+    navLinks.forEach(function(a) { a.classList.toggle('active', a.getAttribute('href') === '#' + current); });
+    ticking = false;
+  }
+  window.addEventListener('scroll', function() {
+    if (!ticking) { requestAnimationFrame(updateActive); ticking = true; }
+  });
+  updateActive();
+})();
+</script>
 </body>
 </html>

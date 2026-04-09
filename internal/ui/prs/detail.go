@@ -2,14 +2,12 @@ package prs
 
 import (
 	"fmt"
-	"os/exec"
-	"runtime"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/popplywop/azboard/internal/api"
 	"github.com/popplywop/azboard/internal/ui/theme"
+	"github.com/popplywop/azboard/internal/ui/uiutil"
 
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/spinner"
@@ -461,7 +459,7 @@ func (m DetailModel) openInBrowser() tea.Cmd {
 			pr.Repository.Name,
 			pr.PullRequestID,
 		)
-		openBrowserURL(url)
+		uiutil.OpenBrowserURL(url)
 		return nil
 	}
 }
@@ -1067,7 +1065,7 @@ func (m *DetailModel) renderContent() string {
 	}
 
 	// Title
-	b.WriteString(theme.Title.Render(wordWrap(fmt.Sprintf("PR #%d: %s", m.pr.PullRequestID, m.pr.Title), wrapWidth)))
+	b.WriteString(theme.Title.Render(uiutil.WordWrap(fmt.Sprintf("PR #%d: %s", m.pr.PullRequestID, m.pr.Title), wrapWidth)))
 	b.WriteString("\n\n")
 
 	// Branch info
@@ -1127,7 +1125,7 @@ func (m *DetailModel) renderContent() string {
 	if desc == "" {
 		desc = "(no description)"
 	}
-	b.WriteString(wordWrap(desc, wrapWidth))
+	b.WriteString(uiutil.WordWrap(desc, wrapWidth))
 	b.WriteString("\n")
 
 	// Comment threads
@@ -1156,7 +1154,7 @@ func (m *DetailModel) renderContent() string {
 	// Keybinding hints at bottom
 	b.WriteString("\n")
 	hints := theme.HelpDesc.Render("  f files · n/N threads · c reply · C new comment · s resolve · a approve · x reject · ? help")
-	b.WriteString(wordWrap(hints, wrapWidth))
+	b.WriteString(uiutil.WordWrap(hints, wrapWidth))
 	b.WriteString("\n")
 
 	return b.String()
@@ -1219,7 +1217,7 @@ func (m *DetailModel) renderThread(b *strings.Builder, thread api.Thread, num in
 		))
 
 		content := strings.TrimSpace(comment.Content)
-		wrapped := wordWrap(content, contentWrap)
+		wrapped := uiutil.WordWrap(content, contentWrap)
 		for _, line := range strings.Split(wrapped, "\n") {
 			threadBuf.WriteString(theme.CommentBody.Render(line))
 			threadBuf.WriteString("\n")
@@ -1352,91 +1350,4 @@ func (m DetailModel) View() string {
 	}
 
 	return strings.Join(sections, "\n")
-}
-
-// wordWrap wraps text to the given width at word boundaries.
-func wordWrap(text string, width int) string {
-	if width <= 0 {
-		return text
-	}
-
-	var result strings.Builder
-	for i, paragraph := range strings.Split(text, "\n") {
-		if i > 0 {
-			result.WriteString("\n")
-		}
-		result.WriteString(wrapLine(paragraph, width))
-	}
-	return result.String()
-}
-
-func wrapLine(line string, width int) string {
-	if utf8.RuneCountInString(line) <= width {
-		return line
-	}
-
-	var result strings.Builder
-	words := strings.Fields(line)
-	if len(words) == 0 {
-		return line
-	}
-
-	lineLen := 0
-	for i, word := range words {
-		wordLen := utf8.RuneCountInString(word)
-
-		if i == 0 {
-			// Handle words longer than width
-			if wordLen > width {
-				runes := []rune(word)
-				for len(runes) > width {
-					result.WriteString(string(runes[:width]))
-					result.WriteString("\n")
-					runes = runes[width:]
-				}
-				result.WriteString(string(runes))
-				lineLen = len(runes)
-			} else {
-				result.WriteString(word)
-				lineLen = wordLen
-			}
-			continue
-		}
-
-		if lineLen+1+wordLen > width {
-			result.WriteString("\n")
-			// Handle words longer than width
-			if wordLen > width {
-				runes := []rune(word)
-				for len(runes) > width {
-					result.WriteString(string(runes[:width]))
-					result.WriteString("\n")
-					runes = runes[width:]
-				}
-				result.WriteString(string(runes))
-				lineLen = len(runes)
-			} else {
-				result.WriteString(word)
-				lineLen = wordLen
-			}
-		} else {
-			result.WriteString(" ")
-			result.WriteString(word)
-			lineLen += 1 + wordLen
-		}
-	}
-
-	return result.String()
-}
-
-// openBrowserURL opens a URL in the default system browser.
-func openBrowserURL(url string) {
-	var cmd string
-	switch runtime.GOOS {
-	case "darwin":
-		cmd = "open"
-	default:
-		cmd = "xdg-open"
-	}
-	_ = exec.Command(cmd, url).Start()
 }

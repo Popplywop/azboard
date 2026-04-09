@@ -2,14 +2,12 @@ package workitems
 
 import (
 	"fmt"
-	"os/exec"
-	"runtime"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/popplywop/azboard/internal/api"
 	"github.com/popplywop/azboard/internal/ui/theme"
+	"github.com/popplywop/azboard/internal/ui/uiutil"
 
 	"charm.land/bubbles/v2/spinner"
 	"charm.land/bubbles/v2/textarea"
@@ -511,14 +509,7 @@ func (m DetailModel) openInBrowser() tea.Cmd {
 			project,
 			id,
 		)
-		var cmd string
-		switch runtime.GOOS {
-		case "darwin":
-			cmd = "open"
-		default:
-			cmd = "xdg-open"
-		}
-		_ = exec.Command(cmd, url).Start()
+		uiutil.OpenBrowserURL(url)
 		return nil
 	}
 }
@@ -556,7 +547,7 @@ func (m DetailModel) renderContent() string {
 	}
 
 	// Title
-	b.WriteString(theme.Title.Render(wiTypeIcon(m.item.Fields.WorkItemType) + " " + fmt.Sprintf("#%d: %s", m.item.ID, m.item.Fields.Title)))
+	b.WriteString(theme.Title.Render(theme.WorkItemTypeIcon(m.item.Fields.WorkItemType) + " " + fmt.Sprintf("#%d: %s", m.item.ID, m.item.Fields.Title)))
 	b.WriteString("\n\n")
 
 	// Metadata
@@ -591,7 +582,7 @@ func (m DetailModel) renderContent() string {
 	if desc == "" {
 		desc = "(no description)"
 	}
-	b.WriteString(wordWrapWI(desc, wrapW))
+	b.WriteString(uiutil.WordWrap(desc, wrapW))
 	b.WriteString("\n")
 
 	// Comments
@@ -610,7 +601,7 @@ func (m DetailModel) renderContent() string {
 				theme.CommentAuthor.Render(c.CreatedBy.DisplayName),
 				theme.CommentDate.Render(c.CreatedDate.Format("2006-01-02 15:04")),
 			))
-			text := wordWrapWI(stripHTML(strings.TrimSpace(c.Text)), wrapW-4)
+			text := uiutil.WordWrap(stripHTML(strings.TrimSpace(c.Text)), wrapW-4)
 			for _, line := range strings.Split(text, "\n") {
 				b.WriteString(theme.CommentBody.Render(line))
 				b.WriteString("\n")
@@ -718,48 +709,4 @@ func stripHTML(s string) string {
 	result = strings.ReplaceAll(result, "&gt;", ">")
 	result = strings.ReplaceAll(result, "&quot;", `"`)
 	return strings.TrimSpace(result)
-}
-
-func wordWrapWI(text string, width int) string {
-	if width <= 0 {
-		return text
-	}
-	var result strings.Builder
-	for i, paragraph := range strings.Split(text, "\n") {
-		if i > 0 {
-			result.WriteString("\n")
-		}
-		result.WriteString(wrapLineWI(paragraph, width))
-	}
-	return result.String()
-}
-
-func wrapLineWI(line string, width int) string {
-	if utf8.RuneCountInString(line) <= width {
-		return line
-	}
-	var result strings.Builder
-	words := strings.Fields(line)
-	if len(words) == 0 {
-		return line
-	}
-	lineLen := 0
-	for i, word := range words {
-		wordLen := utf8.RuneCountInString(word)
-		if i == 0 {
-			result.WriteString(word)
-			lineLen = wordLen
-			continue
-		}
-		if lineLen+1+wordLen > width {
-			result.WriteString("\n")
-			result.WriteString(word)
-			lineLen = wordLen
-		} else {
-			result.WriteString(" ")
-			result.WriteString(word)
-			lineLen += 1 + wordLen
-		}
-	}
-	return result.String()
 }

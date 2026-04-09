@@ -2,12 +2,11 @@ package ui
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/popplywop/azboard/internal/api"
+	"github.com/popplywop/azboard/internal/config"
 	"github.com/popplywop/azboard/internal/ui/prs"
 	"github.com/popplywop/azboard/internal/ui/repopicker"
 	"github.com/popplywop/azboard/internal/ui/theme"
@@ -587,44 +586,12 @@ func (m AppModel) renderHelp() string {
 	return strings.Join(lines, "\n") + "\n"
 }
 
-// saveReposCmd writes the selected repos back to the config file.
+// saveReposCmd persists the repo selection so it survives restarts.
 func saveReposCmd(repos []string) tea.Cmd {
 	return func() tea.Msg {
-		// Best-effort write; errors are silently ignored in the TUI.
-		_ = saveReposToConfig(repos)
+		_ = config.UpdateRepos(repos)
 		return nil
 	}
-}
-
-// saveReposToConfig updates the AZBOARD_REPOS line in the config file.
-func saveReposToConfig(repos []string) error {
-	cfgPath := configFilePath()
-	if cfgPath == "" {
-		return fmt.Errorf("could not determine config file path")
-	}
-
-	// Read current contents
-	data, err := os.ReadFile(cfgPath)
-	if err != nil && !os.IsNotExist(err) {
-		return err
-	}
-
-	newLine := "AZBOARD_REPOS=" + strings.Join(repos, ",")
-	lines := strings.Split(string(data), "\n")
-
-	found := false
-	for i, line := range lines {
-		if strings.HasPrefix(line, "AZBOARD_REPOS=") {
-			lines[i] = newLine
-			found = true
-			break
-		}
-	}
-	if !found {
-		lines = append(lines, newLine)
-	}
-
-	return os.WriteFile(cfgPath, []byte(strings.Join(lines, "\n")), 0644)
 }
 
 // listRepositoriesCmd fetches all repos from ADO and sends a ReposLoadedMsg to the picker.
@@ -636,12 +603,4 @@ func (m AppModel) listRepositoriesCmd() tea.Cmd {
 		}
 		return repopicker.ReposLoadedMsg{Repos: repos}
 	}
-}
-
-func configFilePath() string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ""
-	}
-	return filepath.Join(home, ".config", "azboard", "config.env")
 }

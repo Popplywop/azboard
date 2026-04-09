@@ -6,6 +6,7 @@ import (
 
 	"github.com/popplywop/azboard/internal/api"
 	"github.com/popplywop/azboard/internal/ui/theme"
+	"github.com/popplywop/azboard/internal/ui/uiutil"
 
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/spinner"
@@ -334,38 +335,21 @@ func (m ListModel) buildRows(items []api.WorkItem) []table.Row {
 		if i == sel {
 			// Selected row: plain strings so the table's Selected background
 			// covers the entire row without fighting pre-baked ANSI codes.
-			typeCell = wiTypeIcon(t)
+			typeCell = theme.WorkItemTypeIcon(t)
 			stateCell = state
 		} else {
-			typeCell = theme.WorkItemTypeStyle(t).Render(wiTypeIcon(t))
+			typeCell = theme.WorkItemTypeStyle(t).Render(theme.WorkItemTypeIcon(t))
 			stateCell = theme.WorkItemStateStyle(state).Render(state)
 		}
 		rows[i] = table.Row{
 			typeCell,
 			fmt.Sprintf("%d", item.ID),
-			truncate(item.Fields.Title, 60),
+			uiutil.Truncate(item.Fields.Title, 60),
 			stateCell,
-			truncate(item.Fields.AssignedTo.DisplayName, 20),
+			uiutil.Truncate(item.Fields.AssignedTo.DisplayName, 20),
 		}
 	}
 	return rows
-}
-
-func wiTypeIcon(t string) string {
-	switch t {
-	case "Bug":
-		return "◉"
-	case "User Story":
-		return "◈"
-	case "Task":
-		return "󰆢"
-	case "Epic":
-		return "◆"
-	case "Feature":
-		return "◇"
-	default:
-		return "·"
-	}
 }
 
 func (m ListModel) View() string {
@@ -414,11 +398,4 @@ func (m ListModel) renderScopeBar() string {
 	}
 	bar := lipgloss.JoinHorizontal(lipgloss.Top, parts...)
 	return theme.FilterBar.Render(bar + theme.HelpDesc.Render("   [ / ] cycle"))
-}
-
-func truncate(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen-1] + "…"
 }

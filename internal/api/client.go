@@ -127,8 +127,13 @@ func (c *Client) ensureToken() error {
 }
 
 func (c *Client) authHeader() string {
-	encoded := base64.StdEncoding.EncodeToString([]byte(":" + c.token))
-	return "Basic " + encoded
+	if c.authMethod == config.AuthPAT {
+		return "Basic " + base64.StdEncoding.EncodeToString([]byte(":"+c.token))
+	}
+	c.mu.Lock()
+	tok := c.token
+	c.mu.Unlock()
+	return "Basic " + base64.StdEncoding.EncodeToString([]byte(":" + tok))
 }
 
 // doRequest executes an HTTP request with auth, api-version, and 401 retry.
@@ -137,10 +142,16 @@ func (c *Client) doRequest(method, fullURL string, body interface{}, result inte
 }
 
 // doRequestWithVersion is like doRequest but lets the caller specify the api-version string
-// (e.g. "7.1-preview.4" for preview endpoints).
-func (c *Client) doRequestWithVersion(method, fullURL, apiVersion string, body interface{}, result interface{}) error {
+// (e.g. "7.1-preview.4" for preview endpoints). An optional contentType overrides
+// the default "application/json" (used by patchJSONPatch for "application/json-patch+json").
+func (c *Client) doRequestWithVersion(method, fullURL, apiVersion string, body interface{}, result interface{}, contentType ...string) error {
 	if err := c.ensureToken(); err != nil {
 		return err
+	}
+
+	ct := "application/json"
+	if len(contentType) > 0 && contentType[0] != "" {
+		ct = contentType[0]
 	}
 
 	// Append api-version
@@ -167,7 +178,7 @@ func (c *Client) doRequestWithVersion(method, fullURL, apiVersion string, body i
 	req.Header.Set("Authorization", c.authHeader())
 	req.Header.Set("Accept", "application/json")
 	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Content-Type", ct)
 	}
 
 	resp, err := c.httpClient.Do(req)
@@ -189,14 +200,20 @@ func (c *Client) doRequestWithVersion(method, fullURL, apiVersion string, body i
 			}
 			// Rebuild request for retry (body may have been consumed)
 			if body != nil {
-				jsonBytes, _ := json.Marshal(body)
+				jsonBytes, err := json.Marshal(body)
+				if err != nil {
+					return fmt.Errorf("failed to marshal request body on retry: %w", err)
+				}
 				bodyReader = bytes.NewReader(jsonBytes)
 			}
-			req, _ = http.NewRequest(method, fullURL, bodyReader)
+			req, err = http.NewRequest(method, fullURL, bodyReader)
+			if err != nil {
+				return fmt.Errorf("failed to create retry request: %w", err)
+			}
 			req.Header.Set("Authorization", c.authHeader())
 			req.Header.Set("Accept", "application/json")
 			if body != nil {
-				req.Header.Set("Content-Type", "application/json")
+				req.Header.Set("Content-Type", ct)
 			}
 			resp, err = c.httpClient.Do(req)
 			if err != nil {
@@ -257,47 +274,7 @@ func (c *Client) getOrg(path string, result interface{}) error {
 // patchJSONPatch makes a PATCH request with Content-Type application/json-patch+json.
 // Used for work item update operations.
 func (c *Client) patchJSONPatch(path string, body interface{}, result interface{}) error {
-	if err := c.ensureToken(); err != nil {
-		return err
-	}
-
-	fullURL := c.baseURL + path
-	if strings.Contains(fullURL, "?") {
-		fullURL += "&api-version=7.1"
-	} else {
-		fullURL += "?api-version=7.1"
-	}
-
-	jsonBytes, err := json.Marshal(body)
-	if err != nil {
-		return fmt.Errorf("failed to marshal request body: %w", err)
-	}
-
-	req, err := http.NewRequest("PATCH", fullURL, bytes.NewReader(jsonBytes))
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
-	req.Header.Set("Authorization", c.authHeader())
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Content-Type", "application/json-patch+json")
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		respBody, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("API returned %d: %s", resp.StatusCode, string(respBody))
-	}
-
-	if result != nil {
-		if err := json.NewDecoder(resp.Body).Decode(result); err != nil {
-			return fmt.Errorf("failed to decode response: %w", err)
-		}
-	}
-	return nil
+	return c.doRequestWithVersion("PATCH", c.baseURL+path, "7.1", body, result, "application/json-patch+json")
 }
 
 // getContent fetches raw file content (not JSON-decoded) for a given path.

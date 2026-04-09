@@ -1,7 +1,7 @@
 package config
 
 import (
-	"bufio"
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"os"
@@ -22,34 +22,65 @@ type Config struct {
 	Org                  string // Extracted org name, e.g. pdidev
 	Project              string
 	PAT                  string   // Only set when AuthMethod == "pat"
-	Repos                []string // AZBOARD_REPOS, comma-separated repo names
-	WorkItemTypes        []string // AZBOARD_WORK_ITEM_TYPES, comma-separated
-	DefaultMergeStrategy string   // AZBOARD_DEFAULT_MERGE_STRATEGY (default: "squash")
-	AreaPath             string   // AZBOARD_AREA_PATH, e.g. "PDI\Wholesale" — filters work items by area
+	Repos                []string // Comma-separated repo names
+	WorkItemTypes        []string
+	DefaultMergeStrategy string // "squash", "merge", "rebase", "semilinear"
+	AreaPath             string // e.g. "PDI\Wholesale" — filters work items by area
 }
 
-// Load reads configuration exclusively from ~/.config/azboard/config.env.
+// configJSON is the on-disk JSON representation of the config file.
+type configJSON struct {
+	AuthMethod           string   `json:"auth_method,omitempty"`
+	OrgURL               string   `json:"org_url,omitempty"`
+	Project              string   `json:"project,omitempty"`
+	PAT                  string   `json:"pat,omitempty"`
+	Repos                []string `json:"repos,omitempty"`
+	WorkItemTypes        []string `json:"work_item_types,omitempty"`
+	DefaultMergeStrategy string   `json:"default_merge_strategy,omitempty"`
+	AreaPath             string   `json:"area_path,omitempty"`
+}
+
+// Load reads configuration from the default config file path.
 func Load() (*Config, error) {
-	vals := loadConfigFile("")
+	return LoadFromFile(ConfigFilePath())
+}
+
+// readConfigJSON reads and unmarshals the config file at path.
+func readConfigJSON(path string) (configJSON, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return configJSON{}, fmt.Errorf("could not read config file: %w", err)
+	}
+	var raw configJSON
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return configJSON{}, fmt.Errorf("invalid JSON in config file: %w", err)
+	}
+	return raw, nil
+}
+
+// LoadFromFile reads configuration from the given JSON file path.
+func LoadFromFile(path string) (*Config, error) {
+	raw, err := readConfigJSON(path)
+	if err != nil {
+		return nil, err
+	}
 
 	cfg := &Config{}
 
 	// Auth method
-	authStr := vals["AZURE_DEVOPS_AUTH_METHOD"]
-	switch strings.ToLower(authStr) {
+	switch strings.ToLower(raw.AuthMethod) {
 	case "pat":
 		cfg.AuthMethod = AuthPAT
 	case "azcli", "":
 		cfg.AuthMethod = AuthAzCLI
 	default:
-		return nil, fmt.Errorf("unknown auth method %q: must be \"pat\" or \"azcli\"", authStr)
+		return nil, fmt.Errorf("unknown auth method %q: must be \"pat\" or \"azcli\"", raw.AuthMethod)
 	}
 
 	// Org URL — used to derive org name and base URL
-	orgURL := vals["AZURE_DEVOPS_ORG_URL"]
-	if orgURL != "" {
-		parsedOrg, parsedProject := parseOrgURL(orgURL)
-		cfg.OrgURL = orgURL
+	if raw.OrgURL != "" {
+		parsedOrg, parsedProject := parseOrgURL(raw.OrgURL)
+		cfg.OrgURL = raw.OrgURL
 		if parsedOrg != "" {
 			cfg.Org = parsedOrg
 		}
@@ -59,60 +90,67 @@ func Load() (*Config, error) {
 	}
 
 	// Project can also be set explicitly (overrides URL-parsed value)
-	if p := vals["AZURE_DEVOPS_DEFAULT_PROJECT"]; p != "" {
-		cfg.Project = p
+	if raw.Project != "" {
+		cfg.Project = raw.Project
 	}
 
 	// PAT
 	if cfg.AuthMethod == AuthPAT {
-		cfg.PAT = vals["AZURE_DEVOPS_PAT"]
+		cfg.PAT = raw.PAT
 		if cfg.PAT == "" {
-			return nil, fmt.Errorf("PAT auth requires AZURE_DEVOPS_PAT in %s", ConfigFilePath())
+			return nil, fmt.Errorf("PAT auth requires \"pat\" field in %s", path)
 		}
 	}
 
-	// Repos: AZBOARD_REPOS — split on comma, trim whitespace
-	if reposStr := vals["AZBOARD_REPOS"]; reposStr != "" {
-		for _, r := range strings.Split(reposStr, ",") {
-			r = strings.TrimSpace(r)
-			if r != "" {
-				cfg.Repos = append(cfg.Repos, r)
-			}
-		}
-	}
+	// Repos
+	cfg.Repos = raw.Repos
 
-	// WorkItemTypes: AZBOARD_WORK_ITEM_TYPES
-	if wiTypesStr := vals["AZBOARD_WORK_ITEM_TYPES"]; wiTypesStr != "" {
-		for _, t := range strings.Split(wiTypesStr, ",") {
-			t = strings.TrimSpace(t)
-			if t != "" {
-				cfg.WorkItemTypes = append(cfg.WorkItemTypes, t)
-			}
-		}
+	// WorkItemTypes
+	if len(raw.WorkItemTypes) > 0 {
+		cfg.WorkItemTypes = raw.WorkItemTypes
 	} else {
 		cfg.WorkItemTypes = []string{"User Story", "Bug", "Task", "Feature", "Epic"}
 	}
 
-	// DefaultMergeStrategy: AZBOARD_DEFAULT_MERGE_STRATEGY
-	switch vals["AZBOARD_DEFAULT_MERGE_STRATEGY"] {
+	// DefaultMergeStrategy
+	switch raw.DefaultMergeStrategy {
 	case "squash", "merge", "rebase", "semilinear":
-		cfg.DefaultMergeStrategy = vals["AZBOARD_DEFAULT_MERGE_STRATEGY"]
+		cfg.DefaultMergeStrategy = raw.DefaultMergeStrategy
 	default:
 		cfg.DefaultMergeStrategy = "squash"
 	}
 
-	// AreaPath: AZBOARD_AREA_PATH — optional, filters work items by area
-	cfg.AreaPath = vals["AZBOARD_AREA_PATH"]
+	// AreaPath
+	cfg.AreaPath = raw.AreaPath
 
 	// Validate
 	if cfg.Org == "" {
-		return nil, fmt.Errorf("organization is required: set AZURE_DEVOPS_ORG_URL in %s", ConfigFilePath())
+		return nil, fmt.Errorf("organization is required: set \"org_url\" in %s", path)
 	}
 	if cfg.Project == "" {
-		return nil, fmt.Errorf("project is required: set AZURE_DEVOPS_DEFAULT_PROJECT in %s", ConfigFilePath())
+		return nil, fmt.Errorf("project is required: set \"project\" in %s", path)
 	}
 
 	return cfg, nil
+}
+
+// UpdateRepos reads the existing config, updates only the repos field, and writes back.
+func UpdateRepos(repos []string) error {
+	path := ConfigFilePath()
+
+	raw, err := readConfigJSON(path)
+	if err != nil {
+		return err
+	}
+
+	raw.Repos = repos
+
+	out, err := json.MarshalIndent(raw, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal config: %w", err)
+	}
+
+	return os.WriteFile(path, append(out, '\n'), 0600)
 }
 
 // parseOrgURL extracts the org name and optional project from an Azure DevOps URL.
@@ -151,52 +189,11 @@ func parseOrgURL(rawURL string) (org, project string) {
 	return "", ""
 }
 
-// loadConfigFile reads a key=value config file from ~/.config/azboard/config.env.
-func loadConfigFile(path string) map[string]string {
-	vals := make(map[string]string)
-
-	if path == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return vals
-		}
-		path = filepath.Join(home, ".config", "azboard", "config.env")
-	}
-
-	f, err := os.Open(path)
-	if err != nil {
-		return vals
-	}
-	defer f.Close()
-
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-
-		key, value, ok := strings.Cut(line, "=")
-		if !ok {
-			continue
-		}
-
-		key = strings.TrimSpace(key)
-		value = strings.TrimSpace(value)
-		value = strings.Trim(value, `"'`)
-
-		vals[key] = value
-	}
-
-	return vals
-}
-
 // ConfigFilePath returns the default config file path.
 func ConfigFilePath() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return "~/.config/azboard/config.env"
+		return "~/.config/azboard/config.json"
 	}
-	return filepath.Join(home, ".config", "azboard", "config.env")
+	return filepath.Join(home, ".config", "azboard", "config.json")
 }

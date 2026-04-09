@@ -42,10 +42,12 @@ func main() {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %s\n\n", err)
 		fmt.Fprintf(os.Stderr, "Create a config file at %s:\n\n", config.ConfigFilePath())
-		fmt.Fprintf(os.Stderr, "    AZURE_DEVOPS_AUTH_METHOD=pat\n")
-		fmt.Fprintf(os.Stderr, "    AZURE_DEVOPS_ORG_URL=https://dev.azure.com/yourorg\n")
-		fmt.Fprintf(os.Stderr, "    AZURE_DEVOPS_DEFAULT_PROJECT=YourProject\n")
-		fmt.Fprintf(os.Stderr, "    AZURE_DEVOPS_PAT=your-personal-access-token\n")
+		fmt.Fprintf(os.Stderr, "    {\n")
+		fmt.Fprintf(os.Stderr, "      \"auth_method\": \"pat\",\n")
+		fmt.Fprintf(os.Stderr, "      \"org_url\": \"https://dev.azure.com/yourorg\",\n")
+		fmt.Fprintf(os.Stderr, "      \"project\": \"YourProject\",\n")
+		fmt.Fprintf(os.Stderr, "      \"pat\": \"your-personal-access-token\"\n")
+		fmt.Fprintf(os.Stderr, "    }\n")
 		os.Exit(1)
 	}
 

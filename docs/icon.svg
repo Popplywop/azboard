@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="shield" x1="0" y1="0" x2="0.3" y2="1">
+      <stop offset="0%" stop-color="#0d9488"/>
+      <stop offset="100%" stop-color="#0e7490"/>
+    </linearGradient>
+    <linearGradient id="bolt" x1="0.2" y1="0" x2="0.8" y2="1">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#ccfbf1"/>
+    </linearGradient>
+    <filter id="ds">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#0e7490" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+
+  <!-- Shield shape -->
+  <path d="
+    M64 4
+    C64 4, 114 16, 114 16
+    C117 17, 120 20, 120 23
+    L120 64
+    C120 86, 100 104, 64 124
+    C28 104, 8 86, 8 64
+    L8 23
+    C8 20, 11 17, 14 16
+    C14 16, 64 4, 64 4 Z
+  " fill="url(#shield)" filter="url(#ds)"/>
+
+  <!-- Inner shield inset for depth -->
+  <path d="
+    M64 16
+    C64 16, 108 26, 108 26
+    L108 62
+    C108 80, 92 96, 64 114
+    C36 96, 20 80, 20 62
+    L20 26
+    C20 26, 64 16, 64 16 Z
+  " fill="#0a5e54" opacity="0.35"/>
+
+  <!-- Lightning bolt -->
+  <path d="
+    M72 24
+    L50 68
+    L66 68
+    L56 104
+    L86 56
+    L68 56
+    L80 24
+    Z
+  " fill="url(#bolt)"/>
+</svg>

@@ -12,34 +12,7 @@ import (
 // areaPath restricts results to items under the given area path; empty = no filter.
 // activeOnly filters to non-terminal states.
 func (c *Client) ListWorkItems(types []string, assignedTo, areaPath string, activeOnly bool) ([]WorkItem, error) {
-	// Build WIQL WHERE clauses
-	var clauses []string
-	clauses = append(clauses, fmt.Sprintf("[System.TeamProject] = '%s'", c.project))
-
-	if len(types) > 0 {
-		quotedTypes := make([]string, len(types))
-		for i, t := range types {
-			quotedTypes[i] = "'" + t + "'"
-		}
-		clauses = append(clauses, fmt.Sprintf("[System.WorkItemType] IN (%s)", strings.Join(quotedTypes, ", ")))
-	}
-
-	if assignedTo != "" {
-		clauses = append(clauses, fmt.Sprintf("[System.AssignedTo] = %s", assignedTo))
-	}
-
-	if areaPath != "" {
-		clauses = append(clauses, fmt.Sprintf("[System.AreaPath] UNDER '%s'", areaPath))
-	}
-
-	if activeOnly {
-		clauses = append(clauses, "[System.State] NOT IN ('Closed', 'Done', 'Resolved', 'Removed')")
-	}
-
-	query := fmt.Sprintf(
-		"SELECT [System.Id] FROM WorkItems WHERE %s ORDER BY [System.ChangedDate] DESC",
-		strings.Join(clauses, " AND "),
-	)
+	query := buildWIQLQuery(c.project, types, assignedTo, areaPath, activeOnly)
 
 	// Use $top=200 to prevent hitting ADO's 20,000-item hard limit
 	wiqlPath := "/wit/wiql?$top=200"
@@ -139,4 +112,41 @@ func (c *Client) LinkWorkItemToPR(workItemID int, prArtifactURL string) error {
 		},
 	}
 	return c.patchJSONPatch(path, body, nil)
+}
+
+// escapeWIQL escapes single quotes for WIQL string literals.
+func escapeWIQL(s string) string {
+	return strings.ReplaceAll(s, "'", "''")
+}
+
+// buildWIQLQuery constructs the WIQL query string for ListWorkItems.
+func buildWIQLQuery(project string, types []string, assignedTo, areaPath string, activeOnly bool) string {
+	var clauses []string
+	clauses = append(clauses, fmt.Sprintf("[System.TeamProject] = '%s'", escapeWIQL(project)))
+
+	if len(types) > 0 {
+		quotedTypes := make([]string, len(types))
+		for i, t := range types {
+			quotedTypes[i] = "'" + escapeWIQL(t) + "'"
+		}
+		clauses = append(clauses, fmt.Sprintf("[System.WorkItemType] IN (%s)", strings.Join(quotedTypes, ", ")))
+	}
+
+	if assignedTo != "" {
+		// assignedTo is expected to be a WIQL keyword like @me, not a string literal
+		clauses = append(clauses, fmt.Sprintf("[System.AssignedTo] = %s", assignedTo))
+	}
+
+	if areaPath != "" {
+		clauses = append(clauses, fmt.Sprintf("[System.AreaPath] UNDER '%s'", escapeWIQL(areaPath)))
+	}
+
+	if activeOnly {
+		clauses = append(clauses, "[System.State] NOT IN ('Closed', 'Done', 'Resolved', 'Removed')")
+	}
+
+	return fmt.Sprintf(
+		"SELECT [System.Id] FROM WorkItems WHERE %s ORDER BY [System.ChangedDate] DESC",
+		strings.Join(clauses, " AND "),
+	)
 }

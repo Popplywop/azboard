@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/popplywop/azboard/internal/api"
 	"github.com/popplywop/azboard/internal/ui/theme"
+	"github.com/popplywop/azboard/internal/ui/uiutil"
 
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/spinner"
@@ -162,53 +164,75 @@ func (m ListModel) fetchPRs() tea.Cmd {
 			return PRsLoadedMsg{PRs: nil}
 		}
 
+		type repoResult struct {
+			prs     []api.PullRequest
+			skipped string // non-empty if the repo 404'd
+			err     error
+		}
+
+		results := make([]repoResult, len(repos))
+		var wg sync.WaitGroup
+		wg.Add(len(repos))
+
+		for i, repoName := range repos {
+			go func(idx int, repo string) {
+				defer wg.Done()
+				var r repoResult
+
+				if scope.DraftOnly {
+					prs, err := m.client.ListDraftPullRequestsForRepo(repo)
+					if err != nil {
+						if is404(err) {
+							r.skipped = repo
+						} else {
+							r.err = err
+						}
+					} else {
+						r.prs = prs
+					}
+					results[idx] = r
+					return
+				}
+
+				statuses := []string{scope.APIStatus}
+				if scope.APIStatus == "all" {
+					statuses = []string{"active", "completed", "abandoned"}
+				}
+
+				for _, status := range statuses {
+					prs, err := m.client.ListPullRequestsForRepo(repo, status)
+					if err != nil {
+						if is404(err) {
+							r.skipped = repo
+							break
+						}
+						r.err = err
+						break
+					}
+					r.prs = append(r.prs, prs...)
+				}
+				results[idx] = r
+			}(i, repoName)
+		}
+		wg.Wait()
+
 		combined := make([]api.PullRequest, 0)
 		seen := make(map[int]struct{})
 		var skipped []string
 
-		addPRs := func(prs []api.PullRequest) {
-			for _, pr := range prs {
+		for _, r := range results {
+			if r.err != nil {
+				return PRsErrorMsg{Err: r.err}
+			}
+			if r.skipped != "" {
+				skipped = append(skipped, r.skipped)
+			}
+			for _, pr := range r.prs {
 				if _, ok := seen[pr.PullRequestID]; ok {
 					continue
 				}
 				seen[pr.PullRequestID] = struct{}{}
 				combined = append(combined, pr)
-			}
-		}
-
-		for _, repoName := range repos {
-			if scope.DraftOnly {
-				prs, err := m.client.ListDraftPullRequestsForRepo(repoName)
-				if err != nil {
-					if is404(err) {
-						skipped = append(skipped, repoName)
-						continue
-					}
-					return PRsErrorMsg{Err: err}
-				}
-				addPRs(prs)
-				continue
-			}
-
-			statuses := []string{scope.APIStatus}
-			if scope.APIStatus == "all" {
-				statuses = []string{"active", "completed", "abandoned"}
-			}
-
-			repoSkipped := false
-			for _, status := range statuses {
-				prs, err := m.client.ListPullRequestsForRepo(repoName, status)
-				if err != nil {
-					if is404(err) {
-						if !repoSkipped {
-							skipped = append(skipped, repoName)
-							repoSkipped = true
-						}
-						break
-					}
-					return PRsErrorMsg{Err: err}
-				}
-				addPRs(prs)
 			}
 		}
 
@@ -395,16 +419,11 @@ func (m *ListModel) applyFilter() {
 	query := strings.ToLower(strings.TrimSpace(m.filter.Value()))
 
 	if query == "" {
-		m.filteredPRs = nil
-		for _, pr := range m.prs {
-			if m.matchesScope(pr) {
-				m.filteredPRs = append(m.filteredPRs, pr)
-			}
-		}
+		m.filteredPRs = m.prs
 	} else {
 		m.filteredPRs = nil
 		for _, pr := range m.prs {
-			if m.matchesScope(pr) && m.matchesPR(pr, query) {
+			if m.matchesPR(pr, query) {
 				m.filteredPRs = append(m.filteredPRs, pr)
 			}
 		}
@@ -498,7 +517,7 @@ func (m ListModel) buildRows(prs []api.PullRequest) []table.Row {
 
 		rows[i] = table.Row{
 			fmt.Sprintf("%d", pr.PullRequestID),
-			truncate(pr.Title, 50),
+			uiutil.Truncate(pr.Title, 50),
 			pr.Repository.Name,
 			pr.CreatedBy.DisplayName,
 			status,
@@ -595,21 +614,6 @@ func (m ListModel) currentScope() prScope {
 func (m *ListModel) cycleScope(delta int) {
 	n := len(listScopes)
 	m.scopeIndex = (m.scopeIndex + delta + n) % n
-}
-
-func (m ListModel) matchesScope(pr api.PullRequest) bool {
-	// When DraftOnly is set, the API already returned only draft PRs, so no
-	// additional client-side filtering is needed. For all other scopes, every
-	// PR in m.prs already matches the API-level status filter.
-	_ = pr
-	return true
-}
-
-func truncate(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen-1] + "…"
 }
 
 func shortName(name string) string {

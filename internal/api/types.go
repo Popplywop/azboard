@@ -1,6 +1,9 @@
 package api
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // ListResponse is the generic wrapper for Azure DevOps list API responses.
 type ListResponse[T any] struct {
@@ -36,9 +39,9 @@ func (pr *PullRequest) TargetBranch() string {
 }
 
 func stripRefsPrefix(ref string) string {
-	const prefix = "refs/heads/"
-	if len(ref) > len(prefix) {
-		return ref[len(prefix):]
+	after, found := strings.CutPrefix(ref, "refs/heads/")
+	if found {
+		return after
 	}
 	return ref
 }

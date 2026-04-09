@@ -2,6 +2,7 @@ package repopicker
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/popplywop/azboard/internal/api"
@@ -33,15 +34,16 @@ type RepoPickerCancelMsg struct{}
 
 // PickerModel is the floating repo selection modal.
 type PickerModel struct {
-	repos    []api.GitRepository
-	filtered []api.GitRepository
-	selected map[string]bool // repo name -> selected
-	cursor   int
-	filter   textinput.Model
-	loading  bool
-	err      error
-	width    int
-	height   int
+	repos     []api.GitRepository
+	filtered  []api.GitRepository
+	selected  map[string]bool // repo name -> selected
+	cursor    int
+	filter    textinput.Model
+	filtering bool // true when the filter text input owns keyboard focus
+	loading   bool
+	err       error
+	width     int
+	height    int
 }
 
 func NewPickerModel(initialSelected []string) PickerModel {
@@ -52,7 +54,6 @@ func NewPickerModel(initialSelected []string) PickerModel {
 	fiStyles.Blurred.Prompt = theme.FilterPrompt
 	fiStyles.Focused.Text = theme.FilterText
 	fi.SetStyles(fiStyles)
-	fi.Placeholder = "filter repositories..."
 	fi.CharLimit = 100
 
 	sel := make(map[string]bool)
@@ -69,7 +70,7 @@ func NewPickerModel(initialSelected []string) PickerModel {
 }
 
 func (m PickerModel) Init() tea.Cmd {
-	return m.filter.Focus()
+	return nil
 }
 
 func (m PickerModel) applyFilter() []api.GitRepository {
@@ -105,9 +106,46 @@ func (m PickerModel) Update(msg tea.Msg) (PickerModel, tea.Cmd) {
 		m.height = msg.Height
 
 	case tea.KeyPressMsg:
+		// When filter input is focused, send keys there first
+		if m.filtering {
+			switch msg.String() {
+			case "esc":
+				if m.filter.Value() != "" {
+					m.clearFilter()
+				} else {
+					m.filtering = false
+					m.filter.Blur()
+				}
+				return m, nil
+			case "enter":
+				m.filtering = false
+				m.filter.Blur()
+				return m, nil
+			case "ctrl+c":
+				return m, func() tea.Msg { return RepoPickerCancelMsg{} }
+			default:
+				var cmd tea.Cmd
+				m.filter, cmd = m.filter.Update(msg)
+				cmds = append(cmds, cmd)
+				m.filtered = m.applyFilter()
+				m.clampCursor()
+				return m, tea.Batch(cmds...)
+			}
+		}
+
+		// Normal mode (filter not focused)
 		switch msg.String() {
 		case "esc":
+			if m.filter.Value() != "" {
+				m.clearFilter()
+				return m, nil
+			}
 			return m, func() tea.Msg { return RepoPickerCancelMsg{} }
+
+		case "/":
+			m.filtering = true
+			cmd := m.filter.Focus()
+			return m, cmd
 
 		case "up", "k":
 			if m.cursor > 0 {
@@ -122,7 +160,6 @@ func (m PickerModel) Update(msg tea.Msg) (PickerModel, tea.Cmd) {
 			return m, nil
 
 		case "space", " ":
-			// Toggle selection for item under cursor
 			if m.cursor < len(m.filtered) {
 				name := m.filtered[m.cursor].Name
 				m.selected[name] = !m.selected[name]
@@ -138,17 +175,6 @@ func (m PickerModel) Update(msg tea.Msg) (PickerModel, tea.Cmd) {
 			return m, func() tea.Msg {
 				return RepoPickerDoneMsg{Selected: m.selectedNames(), Save: true}
 			}
-
-		default:
-			var cmd tea.Cmd
-			m.filter, cmd = m.filter.Update(msg)
-			cmds = append(cmds, cmd)
-			m.filtered = m.applyFilter()
-			// Clamp cursor
-			if m.cursor >= len(m.filtered) && len(m.filtered) > 0 {
-				m.cursor = len(m.filtered) - 1
-			}
-			return m, tea.Batch(cmds...)
 		}
 	}
 
@@ -158,6 +184,18 @@ func (m PickerModel) Update(msg tea.Msg) (PickerModel, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
+func (m *PickerModel) clampCursor() {
+	if m.cursor >= len(m.filtered) {
+		m.cursor = 0
+	}
+}
+
+func (m *PickerModel) clearFilter() {
+	m.filter.SetValue("")
+	m.filtered = m.applyFilter()
+	m.clampCursor()
+}
+
 func (m PickerModel) selectedNames() []string {
 	var names []string
 	for name, ok := range m.selected {
@@ -165,6 +203,7 @@ func (m PickerModel) selectedNames() []string {
 			names = append(names, name)
 		}
 	}
+	sort.Strings(names)
 	return names
 }
 
@@ -238,7 +277,7 @@ func (m PickerModel) View() string {
 	}
 
 	lines = append(lines, "")
-	lines = append(lines, theme.HelpDesc.Render("  space toggle · enter confirm · ctrl+s save & confirm · esc cancel"))
+	lines = append(lines, theme.HelpDesc.Render("  space toggle · / filter · enter confirm · ctrl+s save & confirm · esc cancel"))
 
 	content := strings.Join(lines, "\n")
 

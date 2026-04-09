@@ -1,19 +1,39 @@
-# azboard
+<p align="center">
+  <strong>azboard</strong><br>
+  A fast, keyboard-driven terminal UI for Azure DevOps
+</p>
 
-A fast, keyboard-driven terminal UI for Azure DevOps. Review pull requests, manage work
-items, and interact with your ADO project without leaving the terminal.
+<p align="center">
+  <a href="https://github.com/Popplywop/azboard/releases/latest">Latest Release</a> &middot;
+  <a href="https://popplywop.github.io/azboard">Documentation</a> &middot;
+  <a href="#installation">Install</a> &middot;
+  <a href="#quick-start">Quick Start</a>
+</p>
 
-Built with [Bubble Tea](https://github.com/charmbracelet/bubbletea),
+---
+
+Review pull requests, manage work items, and interact with your ADO project without
+leaving the terminal. Built with [Bubble Tea](https://github.com/charmbracelet/bubbletea),
 [Bubbles](https://github.com/charmbracelet/bubbles), and
 [Lip Gloss](https://github.com/charmbracelet/lipgloss).
 
-**Documentation & project page:** https://popplywop.github.io/azboard
+## Table of Contents
+
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Configuration](#configuration)
+- [Usage](#usage)
+- [Features](#features)
+- [Keybindings](#keybindings)
+- [Verifying Releases](#verifying-releases)
+- [Contributing](#contributing)
+- [License](#license)
 
 ---
 
 ## Installation
 
-### Script (Linux & macOS)
+### Linux & macOS
 
 ```bash
 curl -fsSL https://popplywop.github.io/azboard/install.sh | sh
@@ -25,9 +45,7 @@ Installs the latest release to `/usr/local/bin`. To install elsewhere:
 INSTALL_DIR=~/.local/bin curl -fsSL https://popplywop.github.io/azboard/install.sh | sh
 ```
 
-### Script (Windows)
-
-Run in PowerShell:
+### Windows (PowerShell)
 
 ```powershell
 iwr https://popplywop.github.io/azboard/install.ps1 | iex
@@ -39,7 +57,7 @@ Installs to `%LOCALAPPDATA%\azboard` and adds it to your user `PATH` automatical
 $env:INSTALL_DIR="C:\Tools"; iwr https://popplywop.github.io/azboard/install.ps1 | iex
 ```
 
-### Pre-built binaries
+### Pre-built Binaries
 
 Download the latest release for your platform from the
 [releases page](https://github.com/Popplywop/azboard/releases/latest):
@@ -54,7 +72,7 @@ Download the latest release for your platform from the
 
 Extract and move the `azboard` binary somewhere on your `$PATH`.
 
-### Build from source
+### Build from Source
 
 Requires Go 1.21+.
 
@@ -67,95 +85,102 @@ mv azboard /usr/local/bin/azboard
 
 ---
 
-## Verifying releases
+## Quick Start
 
-All release artifacts are signed using [cosign](https://docs.sigstore.dev/cosign/system_config/installation/)
-keyless signing via GitHub Actions. No private key is managed — signatures are tied to the
-GitHub Actions OIDC identity and recorded in the
-[Rekor](https://rekor.sigstore.dev) public transparency log.
+1. **Install azboard** using one of the methods above.
 
-To verify a downloaded archive:
+2. **Create a config file** at `~/.config/azboard/config.json`:
 
-```bash
-cosign verify-blob \
-  --certificate         azboard_0.0.1_linux_amd64.tar.gz.pem \
-  --signature           azboard_0.0.1_linux_amd64.tar.gz.sig \
-  --certificate-identity-regexp "https://github.com/Popplywop/azboard" \
-  --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
-  azboard_0.0.1_linux_amd64.tar.gz
-```
+   ```json
+   {
+     "org_url": "https://dev.azure.com/your-org",
+     "project": "your-project"
+   }
+   ```
 
-The `.sig` and `.pem` files are attached to each release alongside the archives.
+3. **Authenticate** -- either log in with Azure CLI (recommended):
 
-If `cosign` is present on your system, `install.sh` verifies the signature automatically
-before installing.
+   ```bash
+   az login
+   ```
+
+   Or add a PAT to your config:
+
+   ```json
+   {
+     "org_url": "https://dev.azure.com/your-org",
+     "project": "your-project",
+     "auth_method": "pat",
+     "pat": "your-personal-access-token"
+   }
+   ```
+
+4. **Launch azboard:**
+
+   ```bash
+   azboard
+   ```
+
+5. **Select repositories** -- press `R` to open the repo picker, select repos with
+   `space`, and press `ctrl+s` to save your selection to the config file.
 
 ---
 
 ## Configuration
 
-Create `~/.config/azboard/config.env`:
+All settings are read from `~/.config/azboard/config.json`.
 
-```env
-# Azure DevOps organization URL (required)
-AZBOARD_ORG_URL=https://dev.azure.com/your-org
+### Full Example
 
-# Project name (required)
-AZBOARD_PROJECT=your-project
-
-# Auth method: "azcli" (default) or "pat"
-AZBOARD_AUTH=azcli
-
-# Personal access token (required if AUTH=pat)
-AZBOARD_PAT=your-pat-token
-
-# Repositories to load (comma-separated repo names)
-# Leave empty to start with no repos and use the interactive picker (R key)
-AZBOARD_REPOS=my-api,my-frontend
-
-# Work item types to show (comma-separated)
-# Default: User Story,Bug,Task,Feature,Epic
-AZBOARD_WORK_ITEM_TYPES=User Story,Bug,Task
-
-# Default merge strategy: squash (default), merge, rebase, semilinear
-AZBOARD_DEFAULT_MERGE_STRATEGY=squash
+```json
+{
+  "org_url": "https://dev.azure.com/your-org",
+  "project": "your-project",
+  "auth_method": "azcli",
+  "repos": ["my-api", "my-frontend"],
+  "work_item_types": ["User Story", "Bug", "Task", "Feature", "Epic"],
+  "default_merge_strategy": "squash",
+  "area_path": "your-project\\your-team"
+}
 ```
 
-Config is read exclusively from the config file above.
+### Config Reference
 
-### Auth methods
+| Field | Required | Default | Description |
+|-------|:--------:|---------|-------------|
+| `org_url` | Yes | -- | Your Azure DevOps URL. Supports both `https://dev.azure.com/org` and `https://org.visualstudio.com` formats. |
+| `project` | Yes | -- | Project name. Can also be embedded in `org_url` (e.g. `https://dev.azure.com/org/project`). |
+| `auth_method` | No | `"azcli"` | Authentication method: `"azcli"` or `"pat"`. |
+| `pat` | If `auth_method` is `"pat"` | -- | Personal access token with `Code (Read & Write)` and `Work Items (Read & Write)` scopes. |
+| `repos` | No | `[]` | Repositories to load on startup. Use the interactive picker (`R`) to select and save. |
+| `work_item_types` | No | `["User Story", "Bug", "Task", "Feature", "Epic"]` | Work item types to display. |
+| `default_merge_strategy` | No | `"squash"` | Default merge strategy: `"squash"`, `"merge"`, `"rebase"`, or `"semilinear"`. |
+| `area_path` | No | -- | Filter work items to a specific area path (e.g. `"Project\\Team"`). |
+
+### Authentication
 
 **Azure CLI (recommended):** Install the [Azure CLI](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli)
-and run `az login`. azboard will automatically obtain and refresh tokens.
+and run `az login`. azboard automatically obtains and refreshes tokens via
+`az account get-access-token`.
 
-```env
-AZBOARD_AUTH=azcli
-```
+**Personal Access Token:** Generate a PAT in
+[Azure DevOps](https://learn.microsoft.com/en-us/azure/devops/organizations/accounts/use-personal-access-tokens-to-authenticate)
+with the following scopes:
 
-**Personal Access Token:** Generate a PAT in Azure DevOps with `Code (Read & Write)` and
-`Work Items (Read & Write)` scopes.
-
-```env
-AZBOARD_AUTH=pat
-AZBOARD_PAT=your-pat-token
-```
+- `Code` -- Read & Write
+- `Work Items` -- Read & Write
 
 ---
 
 ## Usage
 
 ```bash
-# Launch the TUI
-azboard
-
-# Jump directly to a specific PR by ID
-azboard --pr 12345
-
-# Print version
-azboard --version
+azboard                # Launch the TUI
+azboard --pr 12345     # Jump directly to a specific PR
+azboard --version      # Print version
 ```
 
-On first launch with no `AZBOARD_REPOS` configured, you will see an empty state. Press `R`
+On first launch with no `repos` configured, you will see an empty state. Press `R`
 to open the repo picker and select which repositories to load.
 
 ---
@@ -164,55 +189,49 @@ to open the repo picker and select which repositories to load.
 
 ### Pull Requests
 
-- **List view** — all PRs across your configured repositories in a single table
-- **Scoped views** — Active, Draft, Completed, Abandoned, All; cycle with `[` / `]`
-- **Live filtering** — press `/` to filter by title, repo, author, status, PR ID, or reviewer
-- **Create PR** — `n` to open a multi-step creation form (title, source branch, target branch,
-  description, draft toggle)
-- **PR detail** — title, branches, status, author, reviewers with vote icons, description,
-  comment threads
-- **Merge PR** — `m` to open the merge dialog; choose strategy (squash / merge commit /
-  rebase / semi-linear) and optionally delete the source branch
-- **Abandon PR** — `X` to abandon with confirmation
-- **Draft toggle** — `D` to convert between draft and ready-for-review
-- **Open in browser** — `o` to open the PR in your default browser
-- **Voting** — approve (`a`), approve with suggestions (`A`), reject (`x`),
-  wait for author (`w`), reset (`0`)
-- **Comment threads** — read, reply (`c`), create new thread (`C`), resolve/reactivate (`s`),
-  navigate with `n` / `N`
+| Capability | How |
+|------------|-----|
+| List PRs across all configured repos | Shown on launch |
+| Scope views (Active, Draft, Completed, Abandoned, All) | `[` / `]` to cycle |
+| Filter by title, repo, author, status, ID, or reviewer | `/` to search |
+| Create a new PR | `n` -- multi-step form with branch picker |
+| View PR details (branches, reviewers, description, threads) | `enter` on a PR |
+| Merge with strategy selection | `m` -- squash, merge commit, rebase, semi-linear |
+| Abandon a PR | `X` with confirmation |
+| Toggle draft/ready | `D` |
+| Vote (approve, reject, wait, reset) | `a`, `A`, `x`, `w`, `0` |
+| Comment threads (read, reply, create, resolve) | `c`, `C`, `s`, `n`/`N` |
+| Open in browser | `o` |
 
 ### Code Review
 
-- **File tree** — browse changed files in a collapsible directory tree; `f` from PR detail
-- **Diff viewer** — color-coded unified diff with line number gutters; `enter` on a file
-- **Per-iteration diffs** — `←` / `→` in the files pane to compare different PR iterations
-- **Inline diff comments** — press `i` to enter cursor mode in the diff, navigate to a line,
-  press `c` to post a comment anchored to that line
+| Capability | How |
+|------------|-----|
+| Browse changed files in a collapsible tree | `f` from PR detail |
+| View color-coded unified diffs with line numbers | `enter` on a file |
+| Compare across PR iterations | `left`/`right` arrow keys |
+| Post inline comments on specific lines | `i` for cursor mode, `c` to comment |
 
 ### Work Items
 
-- **List view** — User Stories, Bugs, Tasks, Features, and Epics in a filterable table
-- **Scoped views** — My Work (assigned to you), Active, All
-- **Work item detail** — title, type, state, assignee, area path, description, comments
-- **State transitions** — `s` to pick the next state for a work item
-- **Add comments** — `c` to add a comment to a work item
-- **Link to PR** — `L` to link a work item to a PR by PR ID
-- **Open in browser** — `o` to open the work item in Azure DevOps
+| Capability | How |
+|------------|-----|
+| List User Stories, Bugs, Tasks, Features, Epics | `Tab` to switch to Work Items |
+| Scope views (My Work, Active, All) | `[` / `]` to cycle |
+| Filter by title, ID, state, type, assignee | `/` to search |
+| Transition state | `s` to pick new state |
+| Add comments | `c` |
+| Link work item to a PR | `L` |
+| Open in browser | `o` |
 
-### Repo Selection
+### Repository Selection
 
-- **Config-based** — set `AZBOARD_REPOS` in config for repos to load on startup
-- **Interactive picker** — press `R` from the PR list to open a searchable, multi-select
-  repo picker; `ctrl+s` in the picker saves the selection to your config file
-- **Session-only** — repo selections made in the picker persist for the session; use
-  `ctrl+s` to make them permanent
-
-### Auth & Configuration
-
-- **Azure CLI auth** — automatic token acquisition and refresh via `az account get-access-token`
-- **PAT auth** — static personal access token
-- **URL format support** — both `https://dev.azure.com/org` and `https://org.visualstudio.com`
-- **Config priority** — all settings come from `~/.config/azboard/config.env`
+| Capability | How |
+|------------|-----|
+| Pre-configure repos in config | Set `repos` in `config.json` |
+| Interactive multi-select picker | `R` from the PR list |
+| Search/filter repos in picker | `/` inside the picker |
+| Persist selection to config | `ctrl+s` in the picker |
 
 ---
 
@@ -231,14 +250,14 @@ to open the repo picker and select which repositories to load.
 
 | Key | Action |
 |-----|--------|
-| `[` / `]` | Cycle PR scopes (Active / Draft / Completed / Abandoned / All) |
-| `/` | Open filter |
 | `enter` | Open PR detail |
+| `[` / `]` | Cycle scope (Active / Draft / Completed / Abandoned / All) |
+| `/` | Open filter |
 | `n` | Create new PR |
 | `R` | Open repo picker |
-| `r` | Refresh list |
+| `r` | Refresh |
 
-### PR Detail — Overview
+### PR Detail
 
 | Key | Action |
 |-----|--------|
@@ -246,9 +265,8 @@ to open the repo picker and select which repositories to load.
 | `n` / `N` | Next / previous comment thread |
 | `c` | Reply to focused thread |
 | `C` | Create new comment thread |
-| `s` | Toggle thread status (resolve / reactivate) |
-| `a` | Approve |
-| `A` | Approve with suggestions |
+| `s` | Resolve / reactivate thread |
+| `a` / `A` | Approve / approve with suggestions |
 | `x` | Reject |
 | `w` | Wait for author |
 | `0` | Reset vote |
@@ -259,31 +277,31 @@ to open the repo picker and select which repositories to load.
 | `r` | Refresh |
 | `esc` | Unfocus thread / go back |
 
-### PR Detail — Files Pane
+### Files Pane
 
 | Key | Action |
 |-----|--------|
-| `←` / `→` | Previous / next iteration |
-| `enter` | View diff for selected file / toggle directory |
+| `enter` | View diff / toggle directory |
+| `left` / `right` | Previous / next iteration |
 | `r` | Refresh files |
 | `esc` | Back to overview |
 
-### PR Detail — Diff Pane
+### Diff Pane
 
 | Key | Action |
 |-----|--------|
-| `i` | Enter cursor mode (select a line) |
-| `j` / `k` or `↑` / `↓` | Move cursor line (in cursor mode) |
-| `c` | Post inline comment on cursor line (in cursor mode) |
+| `i` | Enter cursor mode |
+| `j` / `k` | Move cursor (in cursor mode) |
+| `c` | Post inline comment (in cursor mode) |
 | `esc` | Exit cursor mode / back to files |
 
 ### Work Item List
 
 | Key | Action |
 |-----|--------|
-| `[` / `]` | Cycle scopes (My Work / Active / All) |
-| `/` | Filter |
 | `enter` | Open work item detail |
+| `[` / `]` | Cycle scope (My Work / Active / All) |
+| `/` | Filter |
 | `r` | Refresh |
 
 ### Work Item Detail
@@ -299,12 +317,47 @@ to open the repo picker and select which repositories to load.
 
 ---
 
+## Verifying Releases
+
+All release artifacts are signed using [cosign](https://docs.sigstore.dev/cosign/system_config/installation/)
+keyless signing via GitHub Actions OIDC. No private key is managed -- signatures are
+recorded in the [Rekor](https://rekor.sigstore.dev) public transparency log.
+
+To verify a downloaded archive:
+
+```bash
+cosign verify-blob \
+  --certificate         azboard_0.0.1_linux_amd64.tar.gz.pem \
+  --signature           azboard_0.0.1_linux_amd64.tar.gz.sig \
+  --certificate-identity-regexp "https://github.com/Popplywop/azboard" \
+  --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+  azboard_0.0.1_linux_amd64.tar.gz
+```
+
+The `.sig` and `.pem` files are attached to each release alongside the archives.
+If `cosign` is installed, `install.sh` verifies the signature automatically.
+
+---
+
 ## Contributing
 
-azboard is in active development. Bug reports and pull requests are welcome.
+azboard is in active development. Bug reports and pull requests are welcome at
+[github.com/Popplywop/azboard](https://github.com/Popplywop/azboard).
 
 Build and run locally:
 
 ```bash
 go build -o azboard . && ./azboard
 ```
+
+Run tests:
+
+```bash
+go test ./...
+```
+
+---
+
+## License
+
+[MIT](LICENSE)
