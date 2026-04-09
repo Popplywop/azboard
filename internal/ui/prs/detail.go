@@ -144,7 +144,7 @@ type PRDraftToggleErrorMsg struct {
 // --- DetailModel ---
 
 type DetailModel struct {
-	client  *api.Client
+	client  api.Clienter
 	pr      api.PullRequest
 	threads []api.Thread
 
@@ -201,7 +201,7 @@ type mergeOption struct {
 	APIValue string
 }
 
-func NewDetailModel(client *api.Client, pr api.PullRequest, defaultMergeStrategy string) DetailModel {
+func NewDetailModel(client api.Clienter, pr api.PullRequest, defaultMergeStrategy string) DetailModel {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 	s.Style = theme.Spinner

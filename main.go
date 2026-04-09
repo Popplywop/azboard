@@ -19,6 +19,7 @@ var version = "dev"
 func main() {
 	// Parse optional flags before loading config.
 	var jumpToPRID int
+	var demoMode bool
 	args := os.Args[1:]
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
@@ -35,42 +36,67 @@ func main() {
 				jumpToPRID = id
 				i++
 			}
+		case "--demo":
+			demoMode = true
 		}
 	}
 
-	cfg, err := config.Load()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %s\n\n", err)
-		fmt.Fprintf(os.Stderr, "Create a config file at %s:\n\n", config.ConfigFilePath())
-		fmt.Fprintf(os.Stderr, "    {\n")
-		fmt.Fprintf(os.Stderr, "      \"auth_method\": \"pat\",\n")
-		fmt.Fprintf(os.Stderr, "      \"org_url\": \"https://dev.azure.com/yourorg\",\n")
-		fmt.Fprintf(os.Stderr, "      \"project\": \"YourProject\",\n")
-		fmt.Fprintf(os.Stderr, "      \"pat\": \"your-personal-access-token\"\n")
-		fmt.Fprintf(os.Stderr, "    }\n")
-		os.Exit(1)
-	}
+	var client api.Clienter
+	var org, project, orgURL string
+	var repos, workItemTypes []string
+	var defaultMergeStrategy, areaPath string
 
-	client, err := api.NewClient(cfg)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %s\n", err)
-		if cfg.AuthMethod == config.AuthAzCLI {
-			fmt.Fprintf(os.Stderr, "\nMake sure you are logged in with: az login\n")
-		} else {
-			fmt.Fprintf(os.Stderr, "\nCheck your PAT in %s\n", config.ConfigFilePath())
+	if demoMode {
+		client = api.NewMockClient()
+		org = "contoso"
+		project = "Contoso"
+		orgURL = "https://dev.azure.com/contoso"
+		repos = []string{"inventory-api", "web-portal", "auth-service"}
+		workItemTypes = []string{"Bug", "User Story", "Task", "Feature", "Epic"}
+		defaultMergeStrategy = "squash"
+	} else {
+		cfg, err := config.Load()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %s\n\n", err)
+			fmt.Fprintf(os.Stderr, "Create a config file at %s:\n\n", config.ConfigFilePath())
+			fmt.Fprintf(os.Stderr, "    {\n")
+			fmt.Fprintf(os.Stderr, "      \"auth_method\": \"pat\",\n")
+			fmt.Fprintf(os.Stderr, "      \"org_url\": \"https://dev.azure.com/yourorg\",\n")
+			fmt.Fprintf(os.Stderr, "      \"project\": \"YourProject\",\n")
+			fmt.Fprintf(os.Stderr, "      \"pat\": \"your-personal-access-token\"\n")
+			fmt.Fprintf(os.Stderr, "    }\n")
+			os.Exit(1)
 		}
-		os.Exit(1)
+
+		realClient, err := api.NewClient(cfg)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %s\n", err)
+			if cfg.AuthMethod == config.AuthAzCLI {
+				fmt.Fprintf(os.Stderr, "\nMake sure you are logged in with: az login\n")
+			} else {
+				fmt.Fprintf(os.Stderr, "\nCheck your PAT in %s\n", config.ConfigFilePath())
+			}
+			os.Exit(1)
+		}
+		client = realClient
+		org = cfg.Org
+		project = cfg.Project
+		orgURL = cfg.OrgURL
+		repos = cfg.Repos
+		workItemTypes = cfg.WorkItemTypes
+		defaultMergeStrategy = cfg.DefaultMergeStrategy
+		areaPath = cfg.AreaPath
 	}
 
 	model := ui.NewAppModel(
 		client,
-		cfg.Org,
-		cfg.Project,
-		cfg.OrgURL,
-		cfg.Repos,
-		cfg.WorkItemTypes,
-		cfg.DefaultMergeStrategy,
-		cfg.AreaPath,
+		org,
+		project,
+		orgURL,
+		repos,
+		workItemTypes,
+		defaultMergeStrategy,
+		areaPath,
 		jumpToPRID,
 		version,
 	)

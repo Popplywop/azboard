@@ -47,7 +47,7 @@ var listScopes = []wiScope{
 // --- ListModel ---
 
 type ListModel struct {
-	client        *api.Client
+	client        api.Clienter
 	workItemTypes []string
 	currentUserID string
 	areaPath      string
@@ -65,7 +65,7 @@ type ListModel struct {
 	scopeIndex int
 }
 
-func NewListModel(client *api.Client, workItemTypes []string, currentUserID, areaPath string) ListModel {
+func NewListModel(client api.Clienter, workItemTypes []string, currentUserID, areaPath string) ListModel {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 	s.Style = theme.Spinner

@@ -60,7 +60,7 @@ var listScopes = []prScope{
 
 // ListModel is the PR list view.
 type ListModel struct {
-	client      *api.Client
+	client      api.Clienter
 	table       table.Model
 	spinner     spinner.Model
 	filter      textinput.Model
@@ -75,7 +75,7 @@ type ListModel struct {
 	repos       []string // selected repo names (empty = all projects)
 }
 
-func NewListModel(client *api.Client, repos []string) ListModel {
+func NewListModel(client api.Clienter, repos []string) ListModel {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 	s.Style = theme.Spinner

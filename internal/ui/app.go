@@ -36,7 +36,7 @@ const (
 )
 
 type AppModel struct {
-	client               *api.Client
+	client               api.Clienter
 	org                  string
 	project              string
 	orgURL               string
@@ -69,7 +69,7 @@ type AppModel struct {
 }
 
 func NewAppModel(
-	client *api.Client,
+	client api.Clienter,
 	org, project, orgURL string,
 	repos, workItemTypes []string,
 	defaultMergeStrategy, areaPath string,

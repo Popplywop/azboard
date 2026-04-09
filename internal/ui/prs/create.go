@@ -171,7 +171,7 @@ func (p *branchPicker) view(maxVisible int) string {
 
 // CreatePRModel is a multi-step PR creation form.
 type CreatePRModel struct {
-	client          *api.Client
+	client          api.Clienter
 	repos           []string
 	step            createStep
 	repoCursor      int
@@ -192,7 +192,7 @@ type CreatePRModel struct {
 	height          int
 }
 
-func NewCreatePRModel(client *api.Client, repos []string) CreatePRModel {
+func NewCreatePRModel(client api.Clienter, repos []string) CreatePRModel {
 	titleInput := textinput.New()
 	titleInput.Prompt = "Title: "
 	titleInput.Placeholder = "PR title"

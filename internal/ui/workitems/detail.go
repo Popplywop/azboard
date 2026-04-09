@@ -65,7 +65,7 @@ const (
 // --- DetailModel ---
 
 type DetailModel struct {
-	client  *api.Client
+	client  api.Clienter
 	item    api.WorkItem
 	orgURL  string
 	project string
@@ -93,7 +93,7 @@ type DetailModel struct {
 	flashStyle      lipgloss.Style
 }
 
-func NewDetailModel(client *api.Client, item api.WorkItem, orgURL, project string) DetailModel {
+func NewDetailModel(client api.Clienter, item api.WorkItem, orgURL, project string) DetailModel {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 	s.Style = theme.Spinner
