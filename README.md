@@ -12,6 +12,12 @@
 
 ---
 
+<p align="center">
+  <img src="demo.gif" alt="azboard demo" />
+</p>
+
+---
+
 Review pull requests, manage work items, and interact with your ADO project without
 leaving the terminal. Built with [Bubble Tea](https://github.com/charmbracelet/bubbletea),
 [Bubbles](https://github.com/charmbracelet/bubbles), and
