@@ -476,7 +476,10 @@ func (m ListModel) matchesPR(pr api.PullRequest, query string) bool {
 }
 
 func (m *ListModel) recalcColumns() {
-	available := m.width - 4 // Some padding
+	// Overhead: 2 for the rounded border (left+right) applied in View(), plus
+	// the table library's default Padding(0,1) which adds 1 left + 1 right per
+	// cell = 2 × 6 columns = 12. Total non-column overhead = 14.
+	available := m.width - 14
 	if available < 80 {
 		available = 80
 	}
@@ -487,7 +490,7 @@ func (m *ListModel) recalcColumns() {
 	repoW := max(14, available/7)
 	authorW := max(14, available/7)
 	reviewW := max(16, available/5)
-	titleW := max(20, available-idW-statusW-repoW-authorW-reviewW-5)
+	titleW := max(20, available-idW-statusW-repoW-authorW-reviewW)
 
 	m.table.SetColumns([]table.Column{
 		{Title: "#", Width: idW},
