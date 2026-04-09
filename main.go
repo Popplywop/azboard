@@ -72,6 +72,7 @@ func main() {
 		cfg.DefaultMergeStrategy,
 		cfg.AreaPath,
 		jumpToPRID,
+		version,
 	)
 
 	p := tea.NewProgram(model, tea.WithColorProfile(colorprofile.TrueColor))

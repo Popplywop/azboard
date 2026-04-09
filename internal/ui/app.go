@@ -11,6 +11,7 @@ import (
 	"github.com/popplywop/azboard/internal/ui/repopicker"
 	"github.com/popplywop/azboard/internal/ui/theme"
 	"github.com/popplywop/azboard/internal/ui/workitems"
+	"github.com/popplywop/azboard/internal/update"
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
@@ -45,6 +46,7 @@ type AppModel struct {
 	areaPath             string
 	currentUserID        string
 	jumpToPRID           int // if non-zero, fetch and open this PR on startup
+	version              string
 
 	activeView view
 	activeTab  tabID
@@ -72,6 +74,7 @@ func NewAppModel(
 	repos, workItemTypes []string,
 	defaultMergeStrategy, areaPath string,
 	jumpToPRID int,
+	version string,
 ) AppModel {
 	return AppModel{
 		client:               client,
@@ -83,6 +86,7 @@ func NewAppModel(
 		defaultMergeStrategy: defaultMergeStrategy,
 		areaPath:             areaPath,
 		jumpToPRID:           jumpToPRID,
+		version:              version,
 		activeView:           viewList,
 		activeTab:            tabPRs,
 		list:                 prs.NewListModel(client, repos),
@@ -94,6 +98,9 @@ func (m AppModel) Init() tea.Cmd {
 	if m.jumpToPRID != 0 {
 		cmds = append(cmds, m.fetchPRByIDCmd(m.jumpToPRID))
 	}
+	if m.version != "" && m.version != "dev" {
+		cmds = append(cmds, m.checkForUpdate())
+	}
 	return tea.Batch(cmds...)
 }
 
@@ -102,6 +109,10 @@ type userIDLoadedMsg struct {
 }
 
 type appStatusClearMsg struct{}
+
+type updateAvailableMsg struct {
+	latest string
+}
 
 type jumpToPRLoadedMsg struct {
 	pr api.PullRequest
@@ -128,6 +139,17 @@ func (m AppModel) fetchUserID() tea.Cmd {
 	}
 }
 
+func (m AppModel) checkForUpdate() tea.Cmd {
+	ver := m.version
+	return func() tea.Msg {
+		latest, hasUpdate := update.CheckLatestVersion(ver)
+		if hasUpdate {
+			return updateAvailableMsg{latest: latest}
+		}
+		return nil
+	}
+}
+
 func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
@@ -135,6 +157,10 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case userIDLoadedMsg:
 		m.currentUserID = msg.id
 		return m, nil
+
+	case updateAvailableMsg:
+		m.statusMsg = update.FormatUpdateNotice(msg.latest, m.version)
+		return m, tea.Tick(10*time.Second, func(time.Time) tea.Msg { return appStatusClearMsg{} })
 
 	case jumpToPRLoadedMsg:
 		m.activeView = viewDetail
