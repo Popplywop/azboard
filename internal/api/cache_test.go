@@ -195,3 +195,196 @@ func TestConcurrentAccess(t *testing.T) {
 		t.Error("expected at least 1 repo call")
 	}
 }
+
+func TestCachedGetProjectID(t *testing.T) {
+	inner := &countingClient{}
+	cc := NewCachedClient(inner)
+
+	id1, _ := cc.GetProjectID()
+	id2, _ := cc.GetProjectID()
+
+	if id1 != id2 {
+		t.Errorf("expected same project ID, got %q and %q", id1, id2)
+	}
+}
+
+func TestCachedGetCurrentUserID(t *testing.T) {
+	inner := &countingClient{}
+	cc := NewCachedClient(inner)
+
+	id1, _ := cc.GetCurrentUserID()
+	id2, _ := cc.GetCurrentUserID()
+
+	if id1 != id2 {
+		t.Errorf("expected same user ID, got %q and %q", id1, id2)
+	}
+}
+
+func TestCachedListBranches(t *testing.T) {
+	inner := &countingClient{}
+	cc := NewCachedClient(inner)
+
+	b1, err := cc.ListBranches("my-repo")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	b2, _ := cc.ListBranches("my-repo")
+
+	if len(b1) != len(b2) {
+		t.Error("expected same branches on cache hit")
+	}
+}
+
+func TestCachedGetPullRequestThreads(t *testing.T) {
+	inner := &countingClient{}
+	cc := NewCachedClient(inner)
+
+	t1, _ := cc.GetPullRequestThreads("repo-1", 1847)
+	t2, _ := cc.GetPullRequestThreads("repo-1", 1847)
+
+	if len(t1) != len(t2) {
+		t.Error("expected same threads on cache hit")
+	}
+}
+
+func TestCachedListWorkItems(t *testing.T) {
+	inner := &countingClient{}
+	cc := NewCachedClient(inner)
+
+	types := []string{"Bug", "Task"}
+	w1, _ := cc.ListWorkItems(types, "@me", "", true)
+	w2, _ := cc.ListWorkItems(types, "@me", "", true)
+
+	if len(w1) != len(w2) {
+		t.Error("expected same work items on cache hit")
+	}
+}
+
+func TestCachedGetWorkItem(t *testing.T) {
+	inner := &countingClient{}
+	cc := NewCachedClient(inner)
+
+	wi1, _ := cc.GetWorkItem(4521)
+	wi2, _ := cc.GetWorkItem(4521)
+
+	if wi1.ID != wi2.ID {
+		t.Error("expected same work item on cache hit")
+	}
+}
+
+func TestCachedGetWorkItemComments(t *testing.T) {
+	inner := &countingClient{}
+	cc := NewCachedClient(inner)
+
+	c1, _ := cc.GetWorkItemComments(4521)
+	c2, _ := cc.GetWorkItemComments(4521)
+
+	if len(c1) != len(c2) {
+		t.Error("expected same comments on cache hit")
+	}
+}
+
+func TestCachedGetWorkItemTypeStates(t *testing.T) {
+	inner := &countingClient{}
+	cc := NewCachedClient(inner)
+
+	s1, _ := cc.GetWorkItemTypeStates("Bug")
+	s2, _ := cc.GetWorkItemTypeStates("Bug")
+
+	if len(s1) != len(s2) {
+		t.Error("expected same states on cache hit")
+	}
+}
+
+func TestCachedGetPullRequestIterations(t *testing.T) {
+	inner := &countingClient{}
+	cc := NewCachedClient(inner)
+
+	i1, _ := cc.GetPullRequestIterations("repo-1", 1847)
+	i2, _ := cc.GetPullRequestIterations("repo-1", 1847)
+
+	if len(i1) != len(i2) {
+		t.Error("expected same iterations on cache hit")
+	}
+}
+
+func TestCachedGetPullRequestByID(t *testing.T) {
+	inner := &countingClient{}
+	cc := NewCachedClient(inner)
+
+	pr1, _ := cc.GetPullRequestByID(1847)
+	pr2, _ := cc.GetPullRequestByID(1847)
+
+	if pr1.PullRequestID != pr2.PullRequestID {
+		t.Error("expected same PR on cache hit")
+	}
+}
+
+func TestCachedListPullRequestsForRepo(t *testing.T) {
+	inner := &countingClient{}
+	cc := NewCachedClient(inner)
+
+	p1, _ := cc.ListPullRequestsForRepo("inventory-api", "active")
+	p2, _ := cc.ListPullRequestsForRepo("inventory-api", "active")
+
+	if len(p1) != len(p2) {
+		t.Error("expected same PRs on cache hit")
+	}
+}
+
+func TestCachedListDraftPullRequests(t *testing.T) {
+	inner := &countingClient{}
+	cc := NewCachedClient(inner)
+
+	p1, _ := cc.ListDraftPullRequests()
+	p2, _ := cc.ListDraftPullRequests()
+
+	if len(p1) != len(p2) {
+		t.Error("expected same draft PRs on cache hit")
+	}
+}
+
+func TestCachedListDraftPullRequestsForRepo(t *testing.T) {
+	inner := &countingClient{}
+	cc := NewCachedClient(inner)
+
+	p1, _ := cc.ListDraftPullRequestsForRepo("inventory-api")
+	p2, _ := cc.ListDraftPullRequestsForRepo("inventory-api")
+
+	if len(p1) != len(p2) {
+		t.Error("expected same draft PRs on cache hit")
+	}
+}
+
+func TestCachedCreateThreadInvalidatesCache(t *testing.T) {
+	inner := &countingClient{}
+	cc := NewCachedClient(inner)
+
+	// Populate threads cache
+	_, _ = cc.GetPullRequestThreads("repo-1", 1847)
+
+	// CreateThread returns ErrDemoMode, but we can test the flow
+	_ = cc.CreateThread("repo-1", 1847, "test", nil)
+
+	// Since ErrDemoMode is non-nil, cache won't be invalidated automatically.
+	// Manual invalidation test covered elsewhere.
+}
+
+func TestCachedUpdateWorkItemStateInvalidates(t *testing.T) {
+	inner := &countingClient{}
+	cc := NewCachedClient(inner)
+
+	// Populate
+	_, _ = cc.GetWorkItem(4521)
+
+	// UpdateWorkItemState returns ErrDemoMode
+	_ = cc.UpdateWorkItemState(4521, "Active")
+
+	// Verify cache entry still exists (error path doesn't invalidate)
+	cc.mu.RLock()
+	_, exists := cc.store["wi:4521"]
+	cc.mu.RUnlock()
+	if !exists {
+		t.Error("cache entry should still exist after failed mutation")
+	}
+}

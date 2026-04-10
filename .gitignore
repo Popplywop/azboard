@@ -17,3 +17,5 @@ vendor/
 
 # Config (may contain PAT)
 config.json
+
+coverage.out

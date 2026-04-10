@@ -55,3 +55,39 @@ func TestStripHTMLMultipleEntities(t *testing.T) {
 		t.Errorf("stripHTML = %q, want %q", got, "a & b < c > d")
 	}
 }
+
+func TestIsInSubMode(t *testing.T) {
+	m := DetailModel{mode: wiModeNormal}
+	if m.IsInSubMode() {
+		t.Error("expected false for normal mode")
+	}
+
+	m.mode = wiModeStateSelect
+	if !m.IsInSubMode() {
+		t.Error("expected true for state select mode")
+	}
+
+	m.mode = wiModeComment
+	if !m.IsInSubMode() {
+		t.Error("expected true for comment mode")
+	}
+
+	m.mode = wiModeLinkPR
+	if !m.IsInSubMode() {
+		t.Error("expected true for link PR mode")
+	}
+}
+
+func TestStripHTMLSelfClosingTags(t *testing.T) {
+	got := stripHTML("line1<br/>line2")
+	if got != "line1line2" {
+		t.Errorf("stripHTML = %q, want %q", got, "line1line2")
+	}
+}
+
+func TestStripHTMLWithAttributes(t *testing.T) {
+	got := stripHTML(`<a href="http://example.com">link</a>`)
+	if got != "link" {
+		t.Errorf("stripHTML = %q, want %q", got, "link")
+	}
+}
