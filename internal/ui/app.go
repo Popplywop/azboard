@@ -47,6 +47,7 @@ type AppModel struct {
 	currentUserID        string
 	jumpToPRID           int // if non-zero, fetch and open this PR on startup
 	version              string
+	autoRefreshInterval  time.Duration
 
 	activeView view
 	activeTab  tabID
@@ -75,6 +76,7 @@ func NewAppModel(
 	defaultMergeStrategy, areaPath string,
 	jumpToPRID int,
 	version string,
+	autoRefreshInterval time.Duration,
 ) AppModel {
 	return AppModel{
 		client:               client,
@@ -87,6 +89,7 @@ func NewAppModel(
 		areaPath:             areaPath,
 		jumpToPRID:           jumpToPRID,
 		version:              version,
+		autoRefreshInterval:  autoRefreshInterval,
 		activeView:           viewList,
 		activeTab:            tabPRs,
 		list:                 prs.NewListModel(client, repos),
@@ -101,6 +104,11 @@ func (m AppModel) Init() tea.Cmd {
 	if m.version != "" && m.version != "dev" {
 		cmds = append(cmds, m.checkForUpdate())
 	}
+	if m.autoRefreshInterval > 0 {
+		cmds = append(cmds, tea.Tick(m.autoRefreshInterval, func(time.Time) tea.Msg {
+			return autoRefreshTickMsg{}
+		}))
+	}
 	return tea.Batch(cmds...)
 }
 
@@ -109,6 +117,8 @@ type userIDLoadedMsg struct {
 }
 
 type appStatusClearMsg struct{}
+
+type autoRefreshTickMsg struct{}
 
 type updateAvailableMsg struct {
 	latest string
@@ -161,6 +171,34 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case updateAvailableMsg:
 		m.statusMsg = update.FormatUpdateNotice(msg.latest, m.version)
 		return m, tea.Tick(10*time.Second, func(time.Time) tea.Msg { return appStatusClearMsg{} })
+
+	case autoRefreshTickMsg:
+		var refreshCmds []tea.Cmd
+		// Re-schedule next tick
+		refreshCmds = append(refreshCmds, tea.Tick(m.autoRefreshInterval, func(time.Time) tea.Msg {
+			return autoRefreshTickMsg{}
+		}))
+
+		// Invalidate cache for active tab and silently re-fetch
+		if inv, ok := m.client.(api.CacheInvalidator); ok {
+			switch m.activeTab {
+			case tabPRs:
+				if m.activeView == viewList && !m.list.IsLoading() {
+					inv.InvalidatePrefix("prs:")
+					var cmd tea.Cmd
+					m.list, cmd = m.list.SilentRefresh()
+					refreshCmds = append(refreshCmds, cmd)
+				}
+			case tabWorkItems:
+				if m.activeView == viewWorkItems && m.wiListReady && !m.wiList.IsLoading() {
+					inv.InvalidatePrefix("wi:")
+					var cmd tea.Cmd
+					m.wiList, cmd = m.wiList.SilentRefresh()
+					refreshCmds = append(refreshCmds, cmd)
+				}
+			}
+		}
+		return m, tea.Batch(refreshCmds...)
 
 	case jumpToPRLoadedMsg:
 		m.activeView = viewDetail

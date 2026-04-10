@@ -22,6 +22,7 @@ import (
 type PRsLoadedMsg struct {
 	PRs          []api.PullRequest
 	SkippedRepos []string // repos that returned 404
+	MayHaveMore  bool     // true if any repo returned exactly the page size
 }
 
 type PRsErrorMsg struct {
@@ -73,6 +74,7 @@ type ListModel struct {
 	height      int
 	scopeIndex  int
 	repos       []string // selected repo names (empty = all projects)
+	mayHaveMore bool     // hint that results may be truncated
 }
 
 func NewListModel(client api.Clienter, repos []string) ListModel {
@@ -150,10 +152,7 @@ func (m *ListModel) SetRepos(repos []string) {
 
 // is404 returns true when err is an ADO 404 (repo not found).
 func is404(err error) bool {
-	if err == nil {
-		return false
-	}
-	return strings.Contains(err.Error(), "API returned 404")
+	return api.IsNotFound(err)
 }
 
 func (m ListModel) fetchPRs() tea.Cmd {
@@ -219,6 +218,7 @@ func (m ListModel) fetchPRs() tea.Cmd {
 		combined := make([]api.PullRequest, 0)
 		seen := make(map[int]struct{})
 		var skipped []string
+		mayHaveMore := false
 
 		for _, r := range results {
 			if r.err != nil {
@@ -226,6 +226,9 @@ func (m ListModel) fetchPRs() tea.Cmd {
 			}
 			if r.skipped != "" {
 				skipped = append(skipped, r.skipped)
+			}
+			if len(r.prs) >= 50 {
+				mayHaveMore = true
 			}
 			for _, pr := range r.prs {
 				if _, ok := seen[pr.PullRequestID]; ok {
@@ -239,7 +242,7 @@ func (m ListModel) fetchPRs() tea.Cmd {
 		sort.Slice(combined, func(i, j int) bool {
 			return combined[i].CreationDate.After(combined[j].CreationDate)
 		})
-		return PRsLoadedMsg{PRs: combined, SkippedRepos: skipped}
+		return PRsLoadedMsg{PRs: combined, SkippedRepos: skipped, MayHaveMore: mayHaveMore}
 	}
 }
 
@@ -262,6 +265,7 @@ func (m ListModel) Update(msg tea.Msg) (ListModel, tea.Cmd) {
 	case PRsLoadedMsg:
 		m.loading = false
 		m.prs = msg.PRs
+		m.mayHaveMore = msg.MayHaveMore
 		m.applyFilter()
 		if len(msg.SkippedRepos) > 0 {
 			skipped := msg.SkippedRepos
@@ -353,6 +357,9 @@ func (m ListModel) Update(msg tea.Msg) (ListModel, tea.Cmd) {
 
 		case key.Matches(msg, key.NewBinding(key.WithKeys("r"))):
 			if len(m.repos) > 0 {
+				if inv, ok := m.client.(api.CacheInvalidator); ok {
+					inv.InvalidatePrefix("prs:")
+				}
 				m.loading = true
 				m.err = nil
 				return m, tea.Batch(m.spinner.Tick, m.fetchPRs())
@@ -399,6 +406,20 @@ func (m ListModel) RefreshWithRepos(repos []string) (ListModel, tea.Cmd) {
 	}
 	m.loading = true
 	return m, tea.Batch(m.spinner.Tick, m.fetchPRs())
+}
+
+// SilentRefresh re-fetches PRs without showing the loading spinner.
+// Used for auto-refresh so the UI isn't disrupted.
+func (m ListModel) SilentRefresh() (ListModel, tea.Cmd) {
+	if len(m.repos) == 0 {
+		return m, nil
+	}
+	return m, m.fetchPRs()
+}
+
+// IsLoading returns true when the model is currently fetching data.
+func (m ListModel) IsLoading() bool {
+	return m.loading
 }
 
 func (m *ListModel) recalcTableHeight() {
@@ -555,7 +576,8 @@ func (m ListModel) View() string {
 	}
 
 	if m.err != nil {
-		return theme.ErrorText.Render(fmt.Sprintf("\n  Error: %s\n\n  Press 'r' to retry", m.err))
+		hint := api.ErrorHint(m.err)
+		return theme.ErrorText.Render(fmt.Sprintf("\n  Error: %s\n\n  %s", m.err, hint))
 	}
 
 	if len(m.prs) == 0 {
@@ -584,6 +606,13 @@ func (m ListModel) View() string {
 	if len(m.filteredPRs) == 0 && m.filter.Value() != "" {
 		sections = append(sections, theme.FilterCount.Render(
 			fmt.Sprintf("\n  No PRs match \"%s\" — press esc to clear", m.filter.Value()),
+		))
+	}
+
+	// Hint when results may be truncated
+	if m.mayHaveMore {
+		sections = append(sections, theme.HelpDesc.Render(
+			fmt.Sprintf("  Showing first %d results (some repos may have more)", len(m.prs)),
 		))
 	}
 

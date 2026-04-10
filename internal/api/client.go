@@ -230,7 +230,7 @@ func (c *Client) doRequestWithVersion(method, fullURL, apiVersion string, body i
 	// Accept 2xx status codes
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		respBody, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("API returned %d: %s", resp.StatusCode, string(respBody))
+		return &APIError{StatusCode: resp.StatusCode, Body: string(respBody)}
 	}
 
 	if result != nil {
@@ -329,7 +329,7 @@ func (c *Client) getContent(path string) (string, error) {
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("API returned %d: %s", resp.StatusCode, string(body))
+		return "", &APIError{StatusCode: resp.StatusCode, Body: string(body)}
 	}
 
 	data, err := io.ReadAll(resp.Body)

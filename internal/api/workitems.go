@@ -14,8 +14,8 @@ import (
 func (c *Client) ListWorkItems(types []string, assignedTo, areaPath string, activeOnly bool) ([]WorkItem, error) {
 	query := buildWIQLQuery(c.project, types, assignedTo, areaPath, activeOnly)
 
-	// Use $top=200 to prevent hitting ADO's 20,000-item hard limit
-	wiqlPath := "/wit/wiql?$top=200"
+	// Use $top=50 to bound initial page size
+	wiqlPath := "/wit/wiql?$top=50"
 	var result WIQLResult
 	if err := c.post(wiqlPath, WIQLRequest{Query: query}, &result); err != nil {
 		return nil, fmt.Errorf("wiql query: %w", err)

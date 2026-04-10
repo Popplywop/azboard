@@ -129,6 +129,17 @@ func (m ListModel) IsFiltering() bool {
 	return m.filtering
 }
 
+// SilentRefresh re-fetches work items without showing the loading spinner.
+// Used for auto-refresh so the UI isn't disrupted.
+func (m ListModel) SilentRefresh() (ListModel, tea.Cmd) {
+	return m, m.fetchItems()
+}
+
+// IsLoading returns true when the model is currently fetching data.
+func (m ListModel) IsLoading() bool {
+	return m.loading
+}
+
 func (m ListModel) currentScope() wiScope {
 	if m.scopeIndex < 0 || m.scopeIndex >= len(listScopes) {
 		return listScopes[0]
@@ -239,6 +250,9 @@ func (m ListModel) Update(msg tea.Msg) (ListModel, tea.Cmd) {
 			return m, tea.Batch(m.spinner.Tick, m.fetchItems())
 
 		case key.Matches(msg, key.NewBinding(key.WithKeys("r"))):
+			if inv, ok := m.client.(api.CacheInvalidator); ok {
+				inv.InvalidatePrefix("wi:")
+			}
 			m.loading = true
 			m.err = nil
 			return m, tea.Batch(m.spinner.Tick, m.fetchItems())
@@ -358,7 +372,8 @@ func (m ListModel) View() string {
 	}
 
 	if m.err != nil {
-		return theme.ErrorText.Render(fmt.Sprintf("\n  Error: %s\n\n  Press 'r' to retry", m.err))
+		hint := api.ErrorHint(m.err)
+		return theme.ErrorText.Render(fmt.Sprintf("\n  Error: %s\n\n  %s", m.err, hint))
 	}
 
 	if len(m.items) == 0 {

@@ -248,3 +248,47 @@ func TestLoadNonexistentFile(t *testing.T) {
 		t.Fatal("expected error for nonexistent file")
 	}
 }
+
+func TestAutoRefreshSecondsDefault(t *testing.T) {
+	path := writeTestConfig(t, `{
+		"org_url": "https://dev.azure.com/myorg",
+		"project": "MyProject"
+	}`)
+	cfg, err := LoadFromFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.AutoRefreshSeconds != 0 {
+		t.Errorf("AutoRefreshSeconds = %d, want 0 (disabled)", cfg.AutoRefreshSeconds)
+	}
+}
+
+func TestAutoRefreshSecondsSet(t *testing.T) {
+	path := writeTestConfig(t, `{
+		"org_url": "https://dev.azure.com/myorg",
+		"project": "MyProject",
+		"auto_refresh_seconds": 30
+	}`)
+	cfg, err := LoadFromFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.AutoRefreshSeconds != 30 {
+		t.Errorf("AutoRefreshSeconds = %d, want 30", cfg.AutoRefreshSeconds)
+	}
+}
+
+func TestAutoRefreshSecondsClampedToMinimum(t *testing.T) {
+	path := writeTestConfig(t, `{
+		"org_url": "https://dev.azure.com/myorg",
+		"project": "MyProject",
+		"auto_refresh_seconds": 3
+	}`)
+	cfg, err := LoadFromFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.AutoRefreshSeconds != 10 {
+		t.Errorf("AutoRefreshSeconds = %d, want 10 (clamped minimum)", cfg.AutoRefreshSeconds)
+	}
+}

@@ -26,6 +26,7 @@ type Config struct {
 	WorkItemTypes        []string
 	DefaultMergeStrategy string // "squash", "merge", "rebase", "semilinear"
 	AreaPath             string // e.g. "PDI\Wholesale" — filters work items by area
+	AutoRefreshSeconds   int    // 0 = disabled (default); minimum 10 if set
 }
 
 // configJSON is the on-disk JSON representation of the config file.
@@ -38,6 +39,7 @@ type configJSON struct {
 	WorkItemTypes        []string `json:"work_item_types,omitempty"`
 	DefaultMergeStrategy string   `json:"default_merge_strategy,omitempty"`
 	AreaPath             string   `json:"area_path,omitempty"`
+	AutoRefreshSeconds   int      `json:"auto_refresh_seconds,omitempty"`
 }
 
 // Load reads configuration from the default config file path.
@@ -122,6 +124,15 @@ func LoadFromFile(path string) (*Config, error) {
 
 	// AreaPath
 	cfg.AreaPath = raw.AreaPath
+
+	// AutoRefreshSeconds
+	if raw.AutoRefreshSeconds > 0 {
+		if raw.AutoRefreshSeconds < 10 {
+			cfg.AutoRefreshSeconds = 10 // enforce minimum
+		} else {
+			cfg.AutoRefreshSeconds = raw.AutoRefreshSeconds
+		}
+	}
 
 	// Validate
 	if cfg.Org == "" {

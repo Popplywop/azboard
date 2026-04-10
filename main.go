@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/charmbracelet/colorprofile"
 	"github.com/popplywop/azboard/internal/api"
@@ -45,6 +46,7 @@ func main() {
 	var org, project, orgURL string
 	var repos, workItemTypes []string
 	var defaultMergeStrategy, areaPath string
+	var autoRefreshInterval time.Duration
 
 	if demoMode {
 		client = api.NewMockClient()
@@ -78,7 +80,7 @@ func main() {
 			}
 			os.Exit(1)
 		}
-		client = realClient
+		client = api.NewCachedClient(realClient)
 		org = cfg.Org
 		project = cfg.Project
 		orgURL = cfg.OrgURL
@@ -86,6 +88,9 @@ func main() {
 		workItemTypes = cfg.WorkItemTypes
 		defaultMergeStrategy = cfg.DefaultMergeStrategy
 		areaPath = cfg.AreaPath
+		if cfg.AutoRefreshSeconds > 0 {
+			autoRefreshInterval = time.Duration(cfg.AutoRefreshSeconds) * time.Second
+		}
 	}
 
 	model := ui.NewAppModel(
@@ -99,6 +104,7 @@ func main() {
 		areaPath,
 		jumpToPRID,
 		version,
+		autoRefreshInterval,
 	)
 
 	p := tea.NewProgram(model, tea.WithColorProfile(colorprofile.TrueColor))

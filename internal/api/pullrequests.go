@@ -5,10 +5,12 @@ import (
 	"strings"
 )
 
+const prPageSize = 50
+
 // ListPullRequests returns pull requests for the project.
 // status can be "active", "completed", "abandoned", or "all".
 func (c *Client) ListPullRequests(status string) ([]PullRequest, error) {
-	path := fmt.Sprintf("/git/pullrequests?searchCriteria.status=%s", status)
+	path := fmt.Sprintf("/git/pullrequests?searchCriteria.status=%s&$top=%d", status, prPageSize)
 
 	var resp ListResponse[PullRequest]
 	if err := c.get(path, &resp); err != nil {
@@ -20,7 +22,7 @@ func (c *Client) ListPullRequests(status string) ([]PullRequest, error) {
 
 // ListPullRequestsForRepo returns pull requests for a specific repository.
 func (c *Client) ListPullRequestsForRepo(repoName, status string) ([]PullRequest, error) {
-	path := fmt.Sprintf("/git/repositories/%s/pullrequests?searchCriteria.status=%s", repoName, status)
+	path := fmt.Sprintf("/git/repositories/%s/pullrequests?searchCriteria.status=%s&$top=%d", repoName, status, prPageSize)
 
 	var resp ListResponse[PullRequest]
 	if err := c.get(path, &resp); err != nil {
@@ -33,7 +35,7 @@ func (c *Client) ListPullRequestsForRepo(repoName, status string) ([]PullRequest
 // ListDraftPullRequests returns only draft (active) pull requests, using the
 // native ADO isDraft filter so the server filters rather than the client.
 func (c *Client) ListDraftPullRequests() ([]PullRequest, error) {
-	path := "/git/pullrequests?searchCriteria.status=active&searchCriteria.isDraft=true"
+	path := "/git/pullrequests?searchCriteria.status=active&searchCriteria.isDraft=true&$top=" + fmt.Sprint(prPageSize)
 
 	var resp ListResponse[PullRequest]
 	if err := c.get(path, &resp); err != nil {
@@ -45,7 +47,7 @@ func (c *Client) ListDraftPullRequests() ([]PullRequest, error) {
 
 // ListDraftPullRequestsForRepo returns only draft PRs for a specific repo.
 func (c *Client) ListDraftPullRequestsForRepo(repoName string) ([]PullRequest, error) {
-	path := fmt.Sprintf("/git/repositories/%s/pullrequests?searchCriteria.status=active&searchCriteria.isDraft=true", repoName)
+	path := fmt.Sprintf("/git/repositories/%s/pullrequests?searchCriteria.status=active&searchCriteria.isDraft=true&$top=%d", repoName, prPageSize)
 
 	var resp ListResponse[PullRequest]
 	if err := c.get(path, &resp); err != nil {

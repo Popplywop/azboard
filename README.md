@@ -149,7 +149,8 @@ All settings are read from `~/.config/azboard/config.json`.
   "repos": ["my-api", "my-frontend"],
   "work_item_types": ["User Story", "Bug", "Task", "Feature", "Epic"],
   "default_merge_strategy": "squash",
-  "area_path": "your-project\\your-team"
+  "area_path": "your-project\\your-team",
+  "auto_refresh_seconds": 30
 }
 ```
 
@@ -165,6 +166,7 @@ All settings are read from `~/.config/azboard/config.json`.
 | `work_item_types` | No | `["User Story", "Bug", "Task", "Feature", "Epic"]` | Work item types to display. |
 | `default_merge_strategy` | No | `"squash"` | Default merge strategy: `"squash"`, `"merge"`, `"rebase"`, or `"semilinear"`. |
 | `area_path` | No | -- | Filter work items to a specific area path (e.g. `"Project\\Team"`). |
+| `auto_refresh_seconds` | No | `0` (disabled) | Automatically refresh data in the background at this interval. Minimum 10 seconds if enabled. |
 
 ### Authentication
 
@@ -186,6 +188,7 @@ with the following scopes:
 ```bash
 azboard                # Launch the TUI
 azboard --pr 12345     # Jump directly to a specific PR
+azboard --demo         # Launch with demo data (no Azure DevOps connection needed)
 azboard --version      # Print version
 ```
 
@@ -241,6 +244,23 @@ to open the repo picker and select which repositories to load.
 | Interactive multi-select picker | `R` from the PR list |
 | Search/filter repos in picker | `/` inside the picker |
 | Persist selection to config | `ctrl+s` in the picker |
+
+### Caching & Auto-Refresh
+
+azboard caches API responses in memory to reduce latency on repeated views.
+Caches are automatically invalidated when you perform mutations (merge, vote,
+comment, state change) or press `r` to manually refresh.
+
+To enable automatic background refresh, set `auto_refresh_seconds` in your
+config. Data updates silently without disrupting your current view:
+
+```json
+{
+  "auto_refresh_seconds": 30
+}
+```
+
+Set to `0` (or omit) to disable. Minimum value is `10`.
 
 ---
 
@@ -362,8 +382,11 @@ go build -o azboard . && ./azboard
 Run tests:
 
 ```bash
-go test ./...
+go test -race ./...
 ```
+
+CI runs `go vet` and `go test -race` on every pull request. Tests must pass
+before merging.
 
 ---
 

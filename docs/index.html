@@ -155,6 +155,7 @@
     <a href="#code-review">Code Review</a>
     <a href="#work-items">Work Items</a>
     <a href="#repo-selection">Repo Selection</a>
+    <a href="#caching">Caching &amp; Auto-Refresh</a>
   </div>
   <div class="nav-group">
     <div class="nav-group-title">Reference</div>
@@ -231,7 +232,8 @@
   <span class="tok-str">"repos"</span>: [<span class="tok-str">"my-api"</span>, <span class="tok-str">"my-frontend"</span>],
   <span class="tok-str">"work_item_types"</span>: [<span class="tok-str">"User Story"</span>, <span class="tok-str">"Bug"</span>, <span class="tok-str">"Task"</span>],
   <span class="tok-str">"default_merge_strategy"</span>: <span class="tok-str">"squash"</span>,
-  <span class="tok-str">"area_path"</span>: <span class="tok-str">"Project\\Team"</span>
+  <span class="tok-str">"area_path"</span>: <span class="tok-str">"Project\\Team"</span>,
+  <span class="tok-str">"auto_refresh_seconds"</span>: <span class="tok-str">30</span>
 }</code></pre>
 
   <h3 id="config-reference">Config Reference</h3>
@@ -244,6 +246,7 @@
     <tr><td><code>work_item_types</code></td><td>No</td><td>5 default types</td><td>Work item types to display.</td></tr>
     <tr><td><code>default_merge_strategy</code></td><td>No</td><td><code>squash</code></td><td><code>squash</code>, <code>merge</code>, <code>rebase</code>, or <code>semilinear</code>.</td></tr>
     <tr><td><code>area_path</code></td><td>No</td><td>--</td><td>Filter work items to an area path.</td></tr>
+    <tr><td><code>auto_refresh_seconds</code></td><td>No</td><td><code>0</code></td><td>Background refresh interval in seconds. Minimum 10 if enabled. Set to 0 to disable.</td></tr>
   </tbody></table>
 
   <h2 id="authentication">Authentication</h2>
@@ -262,6 +265,7 @@
     <div class="feature-card"><h4><span class="fi">&#128269;</span> Code Review</h4><p>File tree, unified diffs with line numbers, per-iteration comparison, inline comments.</p></div>
     <div class="feature-card"><h4><span class="fi">&#9776;</span> Work Items</h4><p>Browse stories, bugs, tasks, epics. Transition states, add comments, link to PRs.</p></div>
     <div class="feature-card"><h4><span class="fi">&#9881;</span> Repo Selection</h4><p>Interactive multi-select picker with search. Save to config with Ctrl+S.</p></div>
+    <div class="feature-card"><h4><span class="fi">&#9889;</span> Caching &amp; Auto-Refresh</h4><p>In-memory caching for instant navigation. Optional background polling keeps data fresh.</p></div>
   </div>
 
   <h3 id="pull-requests">Pull Requests</h3>
@@ -302,6 +306,14 @@
     <tr><td>Confirm</td><td><kbd>Enter</kbd></td></tr>
     <tr><td>Save to config</td><td><kbd>Ctrl</kbd>+<kbd>S</kbd></td></tr>
   </tbody></table>
+
+  <h3 id="caching">Caching &amp; Auto-Refresh</h3>
+  <p>azboard caches API responses in memory to reduce latency on repeated views. Caches are automatically invalidated when you perform mutations (merge, vote, comment, state change) or press <kbd>r</kbd> to manually refresh.</p>
+  <p>To enable automatic background refresh, set <code>auto_refresh_seconds</code> in your config:</p>
+  <pre><code>{
+  <span class="tok-str">"auto_refresh_seconds"</span>: <span class="tok-str">30</span>
+}</code></pre>
+  <p>Data updates silently without disrupting your current view. Set to <code>0</code> (or omit) to disable. Minimum value is <code>10</code>.</p>
 
   <h2 id="keybindings">Keybindings</h2>
   <h3>Global</h3>
@@ -373,7 +385,8 @@
   <h2 id="contributing">Contributing</h2>
   <p>Bug reports and pull requests are welcome at <a href="https://github.com/Popplywop/azboard">github.com/Popplywop/azboard</a>.</p>
   <pre><code><span class="tok-kw">go build</span> <span class="tok-flag">-o</span> azboard . && ./azboard   <span class="tok-cmt"># build and run</span>
-<span class="tok-kw">go test</span> ./...                       <span class="tok-cmt"># run tests</span></code></pre>
+<span class="tok-kw">go test</span> <span class="tok-flag">-race</span> ./...                 <span class="tok-cmt"># run tests</span></code></pre>
+  <p>CI runs <code>go vet</code> and <code>go test -race</code> on every pull request. Tests must pass before merging.</p>
 </main>
 </div>
 
