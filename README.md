@@ -45,10 +45,12 @@ leaving the terminal. Built with [Bubble Tea](https://github.com/charmbracelet/b
 curl -fsSL https://popplywop.github.io/azboard/install.sh | sh
 ```
 
-Installs the latest release to `/usr/local/bin`. To install elsewhere:
+Installs the latest release to `~/.local/bin` and automatically adds it to your
+`PATH` via your shell's RC file (`.bashrc`, `.zshrc`, `config.fish`, or `.profile`).
+To install elsewhere:
 
 ```bash
-INSTALL_DIR=~/.local/bin curl -fsSL https://popplywop.github.io/azboard/install.sh | sh
+INSTALL_DIR=~/bin curl -fsSL https://popplywop.github.io/azboard/install.sh | sh
 ```
 
 ### Windows (PowerShell)
@@ -86,7 +88,8 @@ Requires Go 1.21+.
 git clone https://github.com/Popplywop/azboard
 cd azboard
 go build -o azboard .
-mv azboard /usr/local/bin/azboard
+mkdir -p ~/.local/bin
+mv azboard ~/.local/bin/azboard
 ```
 
 ---
