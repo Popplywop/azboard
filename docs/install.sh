@@ -3,7 +3,7 @@ set -e
 
 REPO="Popplywop/azboard"
 BINARY="azboard"
-INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
+INSTALL_DIR="${INSTALL_DIR:-${HOME}/.local/bin}"
 
 # Detect OS
 OS="$(uname -s)"
@@ -74,14 +74,43 @@ fi
 # Extract and install
 tar -xzf "${TMP}/${ARCHIVE}" -C "${TMP}"
 
-if [ -w "${INSTALL_DIR}" ]; then
-  mv "${TMP}/${BINARY}" "${INSTALL_DIR}/${BINARY}"
-else
-  echo "Installing to ${INSTALL_DIR} requires sudo..."
-  sudo mv "${TMP}/${BINARY}" "${INSTALL_DIR}/${BINARY}"
-fi
-
+mkdir -p "${INSTALL_DIR}"
+mv "${TMP}/${BINARY}" "${INSTALL_DIR}/${BINARY}"
 chmod +x "${INSTALL_DIR}/${BINARY}"
+
+# Detect shell and update PATH in RC file if needed
+add_to_path() {
+  dir="$1"
+  # Already in PATH — nothing to do
+  case ":${PATH}:" in
+    *":${dir}:"*) return 0 ;;
+  esac
+
+  SHELL_NAME="$(basename "${SHELL:-}")"
+  case "${SHELL_NAME}" in
+    zsh)  RC_FILE="${ZDOTDIR:-${HOME}}/.zshrc" ;;
+    bash) RC_FILE="${HOME}/.bashrc" ;;
+    fish) RC_FILE="${XDG_CONFIG_HOME:-${HOME}/.config}/fish/config.fish" ;;
+    *)    RC_FILE="${HOME}/.profile" ;;
+  esac
+
+  if [ "${SHELL_NAME}" = "fish" ]; then
+    LINE="fish_add_path ${dir}"
+  else
+    LINE="export PATH=\"${dir}:\$PATH\""
+  fi
+
+  if [ -f "${RC_FILE}" ] && grep -qF "${LINE}" "${RC_FILE}"; then
+    return 0
+  fi
+
+  mkdir -p "$(dirname "${RC_FILE}")"
+  printf '\n# Added by azboard installer\n%s\n' "${LINE}" >> "${RC_FILE}"
+  echo "Added ${dir} to PATH in ${RC_FILE}"
+  echo "Restart your shell or run: source ${RC_FILE}"
+}
+
+add_to_path "${INSTALL_DIR}"
 
 echo ""
 echo "azboard ${VERSION} installed to ${INSTALL_DIR}/${BINARY}"

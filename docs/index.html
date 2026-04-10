@@ -183,7 +183,7 @@
     </div>
     <div class="tab-content active" id="tab-unix">
       <pre><code><span class="tok-kw">curl</span> <span class="tok-flag">-fsSL</span> https://popplywop.github.io/azboard/install.sh | sh</code><button class="copy-btn" aria-label="Copy" data-copy="curl -fsSL https://popplywop.github.io/azboard/install.sh | sh"><svg viewBox="0 0 24 24"><path d="M16 1H6a2 2 0 0 0-2 2v12h2V3h10V1zm3 4H10a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H10V7h9v14z"/></svg></button></pre>
-      <p class="note">Installs to <code>/usr/local/bin</code>. Set <code>INSTALL_DIR</code> to change.</p>
+      <p class="note">Installs to <code>~/.local/bin</code> and adds it to your PATH automatically. Set <code>INSTALL_DIR</code> to change.</p>
     </div>
     <div class="tab-content" id="tab-windows">
       <pre><code><span class="tok-kw">iwr</span> https://popplywop.github.io/azboard/install.ps1 | <span class="tok-kw">iex</span></code><button class="copy-btn" aria-label="Copy" data-copy="iwr https://popplywop.github.io/azboard/install.ps1 | iex"><svg viewBox="0 0 24 24"><path d="M16 1H6a2 2 0 0 0-2 2v12h2V3h10V1zm3 4H10a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H10V7h9v14z"/></svg></button></pre>
@@ -204,7 +204,8 @@
       <pre><code><span class="tok-kw">git clone</span> https://github.com/Popplywop/azboard
 <span class="tok-kw">cd</span> azboard
 <span class="tok-kw">go build</span> <span class="tok-flag">-o</span> azboard .
-<span class="tok-kw">mv</span> azboard /usr/local/bin/azboard</code><button class="copy-btn" aria-label="Copy" data-copy="git clone https://github.com/Popplywop/azboard && cd azboard && go build -o azboard . && mv azboard /usr/local/bin/azboard"><svg viewBox="0 0 24 24"><path d="M16 1H6a2 2 0 0 0-2 2v12h2V3h10V1zm3 4H10a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H10V7h9v14z"/></svg></button></pre>
+<span class="tok-kw">mkdir -p</span> ~/.local/bin
+<span class="tok-kw">mv</span> azboard ~/.local/bin/azboard</code><button class="copy-btn" aria-label="Copy" data-copy="git clone https://github.com/Popplywop/azboard && cd azboard && go build -o azboard . && mkdir -p ~/.local/bin && mv azboard ~/.local/bin/azboard"><svg viewBox="0 0 24 24"><path d="M16 1H6a2 2 0 0 0-2 2v12h2V3h10V1zm3 4H10a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H10V7h9v14z"/></svg></button></pre>
     </div>
   </div>
 
