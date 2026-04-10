@@ -388,3 +388,147 @@ func TestCachedUpdateWorkItemStateInvalidates(t *testing.T) {
 		t.Error("cache entry should still exist after failed mutation")
 	}
 }
+
+func TestCachedGetPullRequest(t *testing.T) {
+	inner := &countingClient{}
+	cc := NewCachedClient(inner)
+
+	pr1, _ := cc.GetPullRequest("repo-1", 1847)
+	pr2, _ := cc.GetPullRequest("repo-1", 1847)
+
+	if pr1.PullRequestID != pr2.PullRequestID {
+		t.Error("expected same PR on cache hit")
+	}
+}
+
+func TestCachedGetFileContentAtCommit(t *testing.T) {
+	inner := &countingClient{}
+	cc := NewCachedClient(inner)
+
+	c1, _ := cc.GetFileContentAtCommit("repo-1", "/src/main.go", "abc123")
+	c2, _ := cc.GetFileContentAtCommit("repo-1", "/src/main.go", "abc123")
+
+	if c1 != c2 {
+		t.Error("expected same content on cache hit")
+	}
+}
+
+func TestCachedGetPullRequestIterationChanges(t *testing.T) {
+	inner := &countingClient{}
+	cc := NewCachedClient(inner)
+
+	ch1, _ := cc.GetPullRequestIterationChanges("repo-1", 1847, 1)
+	ch2, _ := cc.GetPullRequestIterationChanges("repo-1", 1847, 1)
+
+	if len(ch1) != len(ch2) {
+		t.Error("expected same changes on cache hit")
+	}
+}
+
+func TestCachedMutationMergePR(t *testing.T) {
+	inner := &countingClient{}
+	cc := NewCachedClient(inner)
+
+	// MergePullRequest returns ErrDemoMode so cache won't invalidate
+	err := cc.MergePullRequest("repo-1", 1, "squash", "msg", true)
+	if err == nil {
+		t.Error("expected ErrDemoMode")
+	}
+}
+
+func TestCachedMutationAbandonPR(t *testing.T) {
+	inner := &countingClient{}
+	cc := NewCachedClient(inner)
+
+	err := cc.AbandonPullRequest("repo-1", 1)
+	if err == nil {
+		t.Error("expected ErrDemoMode")
+	}
+}
+
+func TestCachedMutationToggleDraft(t *testing.T) {
+	inner := &countingClient{}
+	cc := NewCachedClient(inner)
+
+	err := cc.ToggleDraft("repo-1", 1, true)
+	if err == nil {
+		t.Error("expected ErrDemoMode")
+	}
+}
+
+func TestCachedMutationSetVote(t *testing.T) {
+	inner := &countingClient{}
+	cc := NewCachedClient(inner)
+
+	err := cc.SetVote("repo-1", 1, "user-1", 10)
+	if err == nil {
+		t.Error("expected ErrDemoMode")
+	}
+}
+
+func TestCachedMutationReplyToThread(t *testing.T) {
+	inner := &countingClient{}
+	cc := NewCachedClient(inner)
+
+	err := cc.ReplyToThread("repo-1", 1, 1, "reply")
+	if err == nil {
+		t.Error("expected ErrDemoMode")
+	}
+}
+
+func TestCachedMutationUpdateThreadStatus(t *testing.T) {
+	inner := &countingClient{}
+	cc := NewCachedClient(inner)
+
+	err := cc.UpdateThreadStatus("repo-1", 1, 1, "fixed")
+	if err == nil {
+		t.Error("expected ErrDemoMode")
+	}
+}
+
+func TestCachedMutationAddWorkItemComment(t *testing.T) {
+	inner := &countingClient{}
+	cc := NewCachedClient(inner)
+
+	err := cc.AddWorkItemComment(42, "hello")
+	if err == nil {
+		t.Error("expected ErrDemoMode")
+	}
+}
+
+func TestCachedMutationLinkWorkItemToPR(t *testing.T) {
+	inner := &countingClient{}
+	cc := NewCachedClient(inner)
+
+	err := cc.LinkWorkItemToPR(42, "vstfs:///Git/PullRequestId/proj/repo/1")
+	if err == nil {
+		t.Error("expected ErrDemoMode")
+	}
+}
+
+func TestCachedMutationCreatePullRequest(t *testing.T) {
+	inner := &countingClient{}
+	cc := NewCachedClient(inner)
+
+	_, err := cc.CreatePullRequest("repo-1", "title", "refs/heads/feature", "refs/heads/main", "desc", false)
+	if err == nil {
+		t.Error("expected ErrDemoMode")
+	}
+}
+
+func TestCachedBuildUnifiedDiff(t *testing.T) {
+	inner := &countingClient{}
+	cc := NewCachedClient(inner)
+
+	change := IterationChange{
+		ChangeID:   1,
+		ChangeType: "edit",
+		Item:       ChangeItem{Path: "/src/main.go"},
+	}
+	d1, _ := cc.BuildUnifiedDiff("repo-1", change, "abc", "def")
+	d2, _ := cc.BuildUnifiedDiff("repo-1", change, "abc", "def")
+
+	if d1 != d2 {
+		t.Error("expected same diff on cache hit")
+	}
+}
