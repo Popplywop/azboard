@@ -50,7 +50,7 @@ func TestWrapRunesEmpty(t *testing.T) {
 
 func TestColorizeDiffLineNumbers(t *testing.T) {
 	diff := "@@ -1,3 +1,4 @@\n context\n+added\n context2\n-removed\n"
-	_, lineCount, lineNums := colorizeDiff(diff, 80, 0, false)
+	_, lineCount, lineNums, _ := colorizeDiff(diff, 80, 0, false, diffViewInline)
 	if lineCount < 5 {
 		t.Errorf("lineCount = %d, want >= 5", lineCount)
 	}
