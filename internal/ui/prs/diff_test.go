@@ -1,6 +1,11 @@
 package prs
 
-import "testing"
+import (
+	"strings"
+	"testing"
+
+	tea "charm.land/bubbletea/v2"
+)
 
 func TestWrapRunesNoWrap(t *testing.T) {
 	got := wrapRunes("short", 80)
@@ -59,5 +64,46 @@ func TestColorizeDiffLineNumbers(t *testing.T) {
 	}
 	if !hasNonZero {
 		t.Error("expected some non-zero line numbers in lineNums")
+	}
+}
+
+func TestDiffCursorModeStartsAtVisibleMidpoint(t *testing.T) {
+	var lines []string
+	lines = append(lines, "@@ -1,80 +1,80 @@")
+	for i := 0; i < 80; i++ {
+		lines = append(lines, " context")
+	}
+	diff := strings.Join(lines, "\n")
+
+	m := NewDiffModel()
+	m.SetSize(120, 20)
+	m.SetDiff("file.txt", diff)
+	m.viewport.SetYOffset(12)
+
+	want := m.viewport.YOffset() + m.viewport.Height()/2
+	if want >= m.lineCount {
+		want = m.lineCount - 1
+	}
+
+	gotModel, _ := m.Update(tea.KeyPressMsg(tea.Key{Text: "i", Code: 'i'}))
+	if !gotModel.InCursorMode() {
+		t.Fatal("expected cursor mode to be enabled after pressing i")
+	}
+	if gotModel.CursorLine() != want {
+		t.Fatalf("cursor line = %d, want %d", gotModel.CursorLine(), want)
+	}
+}
+
+func TestDiffCursorModeMidpointClampsToLastLine(t *testing.T) {
+	diff := "@@ -1,2 +1,2 @@\n a\n b\n"
+
+	m := NewDiffModel()
+	m.SetSize(120, 30)
+	m.SetDiff("small.txt", diff)
+	m.viewport.SetYOffset(999)
+
+	gotModel, _ := m.Update(tea.KeyPressMsg(tea.Key{Text: "i", Code: 'i'}))
+	if gotModel.CursorLine() != m.lineCount-1 {
+		t.Fatalf("cursor line = %d, want %d", gotModel.CursorLine(), m.lineCount-1)
 	}
 }
