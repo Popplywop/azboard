@@ -98,6 +98,7 @@ func (m DiffModel) Update(msg tea.Msg) (DiffModel, tea.Cmd) {
 		switch kp.String() {
 		case "i":
 			if !m.cursorMode {
+				m.cursorLine = m.visibleMidpointLine()
 				m.cursorMode = true
 				m.refreshContent()
 				return m, nil
@@ -130,6 +131,20 @@ func (m DiffModel) Update(msg tea.Msg) (DiffModel, tea.Cmd) {
 	var cmd tea.Cmd
 	m.viewport, cmd = m.viewport.Update(msg)
 	return m, cmd
+}
+
+func (m DiffModel) visibleMidpointLine() int {
+	if m.lineCount <= 0 {
+		return 0
+	}
+	line := m.viewport.YOffset() + m.viewport.Height()/2
+	if line < 0 {
+		return 0
+	}
+	if line >= m.lineCount {
+		return m.lineCount - 1
+	}
+	return line
 }
 
 func (m *DiffModel) refreshContent() {
