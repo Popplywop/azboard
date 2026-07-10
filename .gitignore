@@ -15,6 +15,25 @@ Thumbs.db
 # Go
 vendor/
 
+# C# / .NET
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+TestResults/
+*.trx
+*.binlog
+artifacts/
+publish/
+project.lock.json
+*.nuget.props
+*.nuget.targets
+
 # Config (may contain PAT)
 config.json
 
