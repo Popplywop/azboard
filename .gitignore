@@ -33,6 +33,7 @@ publish/
 project.lock.json
 *.nuget.props
 *.nuget.targets
+generated/
 
 # Config (may contain PAT)
 config.json

@@ -1,8 +1,12 @@
 ﻿using System.Reflection;
 
+using ConsoleForge.Core;
+using ConsoleForge.Styling;
+
 using devo.config;
 using devo.exceptions;
 using devo.services;
+using devo.ui;
 
 string version = Assembly.GetExecutingAssembly()
     .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "dev";
@@ -51,4 +55,13 @@ catch (ConfigException e)
 var http = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
 client = new CachedAdoClient(new AdoClient(config, http));
 
-return 0;
+try
+{
+    await App.Run(new AppModel(client, config, jumpToPrID, version), theme: Theme.Dracula);
+    return 0;
+}
+catch (Exception ex)
+{
+    await Console.Error.WriteLineAsync($"Error runnint TUI: {ex}");
+    return 1;
+}
