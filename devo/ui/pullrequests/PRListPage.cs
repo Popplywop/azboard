@@ -17,13 +17,17 @@ internal sealed partial record PRListPage(
     public int Selected { get; init; }
     public bool Loading { get; init; } = true;
     public string? Error { get; init; }
+    public int SpinnerFrame { get; init; }
 
     private static readonly KeyMap Keys = new KeyMap()
         .On(KeyBindings.Up, () => new NavUpMsg())
         .On(KeyBindings.Down, () => new NavDownMsg())
         .On(KeyBindings.Refresh, () => new RefreshMsg());
 
-    public ICmd? Init() => FetchPRsCmd();
+    private static ICmd SpinnerTick() =>
+        Cmd.Tick(TimeSpan.FromMilliseconds(120), at => new TickMsg(at));
+
+    public ICmd? Init() => Cmd.Batch(SpinnerTick(), FetchPRsCmd());
 
     private (IModel Model, ICmd? Cmd) OnPRsLoaded(PRsLoadedMsg msg) =>
         (this with { PRs = msg.PRs, Loading = false, Error = null }, null);
@@ -38,14 +42,26 @@ internal sealed partial record PRListPage(
         (this with { Selected = Math.Min(Math.Max(0, PRs.Count - 1), Selected + 1) }, null);
 
     private (IModel Model, ICmd? Cmd) OnRefresh() =>
-        (this with { Loading = true, Error = null }, FetchPRsCmd());
+        (this with { Loading = true, Error = null }, Cmd.Batch(FetchPRsCmd(), SpinnerTick()));
+
+    // re-arm only while loading — the chain ends quietly once content is up
+    private (IModel Model, ICmd? Cmd) OnTick() =>
+        Loading
+            ? (this with { SpinnerFrame = SpinnerFrame + 1 }, SpinnerTick())
+            : (this, null);
 
     public IWidget View()
     {
         if (Loading)
         {
-            return new TextBlock("Loading pull requests…");
+            const string label = "Please wait…";
+            return Centered(new Spinner(SpinnerFrame, label: label, frames: Spinner.ArcFrames)
+            {
+                Width = SizeConstraint.Fixed(label.Length + 2), // frame glyph + space + label
+                Height = SizeConstraint.Fixed(1),
+            });
         }
+
         if (Error is not null)
         {
             return new TextBlock($"Error: {Error}\n\nPress r to retry");
@@ -78,6 +94,24 @@ internal sealed partial record PRListPage(
         return new Table(columns, rows, Selected);
     }
 
+    /// <summary>Centers a widget using flex spacers. The inner widget MUST
+    /// declare Fixed Width/Height: the layout engine treats Auto as Flex(1)
+    /// (no content measurement), so flex spacers only center around fixed
+    /// children.</summary>
+    private static Container Centered(IWidget inner, int rowHeight = 1) =>
+        new(Axis.Vertical,
+        [
+            new TextBlock(string.Empty) { Height = SizeConstraint.Flex(1) },
+            new Container(Axis.Horizontal,
+            [
+                new TextBlock(string.Empty) { Width = SizeConstraint.Flex(1) },
+                inner,
+                new TextBlock(string.Empty) { Width = SizeConstraint.Flex(1) },
+            ])
+            { Height = SizeConstraint.Fixed(rowHeight) },
+            new TextBlock(string.Empty) { Height = SizeConstraint.Flex(1) },
+        ]);
+
     /// <summary>Fetches PRs for the configured repos concurrently, skipping
     /// repos that 404. No repos configured = project-wide query.</summary>
     private ICmd FetchPRsCmd()
@@ -107,15 +141,14 @@ internal sealed partial record PRListPage(
                         }
                     }));
 
-                List<PullRequest> merged = results
+                List<PullRequest> merged = [.. results
                     .SelectMany(r => r)
-                    .OrderByDescending(pr => pr.CreationDate)
-                    .ToList();
+                    .OrderByDescending(pr => pr.CreationDate)];
                 return new PRsLoadedMsg(merged);
             }
             catch (Exception e)
             {
-                return (IMsg)new PRsErrorMsg(e);
+                return new PRsErrorMsg(e);
             }
         });
     }
@@ -125,4 +158,5 @@ internal sealed partial record PRListPage(
     private sealed record NavUpMsg : IMsg;
     private sealed record NavDownMsg : IMsg;
     private sealed record RefreshMsg : IMsg;
+    private sealed record TickMsg(DateTimeOffset At) : IMsg;
 }
